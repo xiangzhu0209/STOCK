@@ -11,10 +11,10 @@
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <style>
-        :root { --main-dark: #0f172a; --main-blue: #2563eb; --up: #ef4444; --down: #10b981; --bg-light: #f8fafc; }
+        :root { --main-dark: #0f172a; --main-blue: #2563eb; --up: #ef4444; --down: #10b981; --watch: #f59e0b; --bg-light: #f8fafc; }
         body { font-family: 'Inter', 'Noto Sans TC', sans-serif; background: var(--bg-light); margin: 0; padding-bottom: 100px; color: #334155; }
         
-        /* 密碼登入 (維持原樣) */
+        /* 密碼登入 */
         #loginScreen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--main-dark); z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
         .pin-dots { display: flex; gap: 15px; margin-bottom: 30px; }
         .dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #cbd5e1; background: transparent; }
@@ -32,26 +32,33 @@
         .up-text { color: var(--up); font-weight: 900; }
         .down-text { color: var(--down); font-weight: 900; }
 
-        /* Header */
+        /* Header & Tabs */
         .header { background: white; padding: 15px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
         .search-bar { background: #f1f5f9; border-radius: 10px; padding: 10px; display: flex; align-items: center; }
         .search-bar input { border: none; background: transparent; outline: none; width: 100%; font-size: 15px; font-weight: bold; }
         
-        .tab-group { display: flex; gap: 8px; margin-top: 10px; }
-        .tab-btn { flex: 1; padding: 8px; border-radius: 8px; border: 1px solid #cbd5e1; background: white; font-weight: 700; cursor: pointer; font-size: 13px; }
+        .tab-group { display: flex; gap: 6px; margin-top: 10px; overflow-x: auto; padding-bottom: 4px; }
+        .tab-btn { padding: 8px 12px; border-radius: 8px; border: 1px solid #cbd5e1; background: white; font-weight: 700; cursor: pointer; font-size: 13px; white-space: nowrap; }
         .tab-btn.active { background: var(--main-dark); color: white; border-color: var(--main-dark); }
 
-        /* 股票方格 (大代號, 小名稱) */
+        /* 股票方格 */
         .card-grid { display: grid; gap: 12px; padding: 15px; grid-template-columns: repeat(2, 1fr); }
-        .grid-item { background: white; border-radius: 16px; padding: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; }
+        .grid-item { background: white; border-radius: 16px; padding: 15px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); border: 1px solid #e2e8f0; cursor: pointer; display: flex; flex-direction: column; justify-content: space-between; position: relative; }
         .grid-header { display: flex; align-items: baseline; gap: 6px; margin-bottom: 12px; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; }
         .grid-ticker { font-size: 26px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px; }
         .grid-name { font-size: 13px; font-weight: 700; color: #64748b; }
         
         .grid-row { display: flex; justify-content: space-between; font-size: 12px; color: #475569; margin-bottom: 4px; font-weight: 700; }
         .grid-val { font-weight: 900; color: #0f172a; font-size: 14px; }
+        
+        .badge-sold { position: absolute; top: 12px; right: 12px; background: #94a3b8; color: white; font-size: 10px; padding: 3px 6px; border-radius: 4px; font-weight: bold; }
+        .badge-watch { position: absolute; top: 12px; right: 12px; background: var(--watch); color: white; font-size: 10px; padding: 3px 6px; border-radius: 4px; font-weight: bold; }
 
-        /* 彈窗與表單 */
+        /* 電腦版適配 */
+        .desktop-view .card-grid { grid-template-columns: repeat(4, 1fr); max-width: 1000px; margin: 0 auto; }
+        .desktop-view .dashboard, .desktop-view .header { max-width: 1000px; margin: 0 auto; }
+
+        /* 彈窗 */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.8); z-index: 200; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
         .modal-container { background: white; width: 92%; max-width: 500px; border-radius: 20px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
         .modal-header { padding: 15px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
@@ -62,18 +69,19 @@
         .tx-item { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; display: flex; justify-content: space-between; align-items: center; }
         .tx-type.buy { color: var(--up); background: rgba(239, 68, 68, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 900; }
         .tx-type.sell { color: var(--down); background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 900; }
+        .tx-type.watch { color: var(--watch); background: rgba(245, 158, 11, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 900; }
 
-        /* 表單輸入 */
+        /* 表單 */
         .form-box { background: white; width: 92%; max-width: 500px; border-radius: 24px; padding: 25px; overflow-y: auto; max-height: 90vh; }
         .input-group { margin-bottom: 15px; }
         .input-group label { display: block; font-size: 12px; font-weight: 700; color: #64748b; margin-bottom: 5px; }
         .input-control { width: 100%; padding: 12px; border: 1px solid #cbd5e1; border-radius: 10px; font-size: 16px; box-sizing: border-box; font-weight: 700; font-family: inherit; }
         
-        /* 買賣切換按鈕 */
-        .type-toggle { display: flex; background: #f1f5f9; border-radius: 10px; padding: 4px; margin-bottom: 20px; }
-        .type-btn { flex: 1; padding: 10px; text-align: center; font-weight: 900; border-radius: 8px; cursor: pointer; color: #64748b; transition: 0.2s; }
+        .type-toggle { display: flex; background: #f1f5f9; border-radius: 10px; padding: 4px; margin-bottom: 20px; gap: 4px; }
+        .type-btn { flex: 1; padding: 10px; text-align: center; font-weight: 900; border-radius: 8px; cursor: pointer; color: #64748b; transition: 0.2s; font-size: 14px; }
         .type-btn.active.buy { background: var(--up); color: white; }
         .type-btn.active.sell { background: var(--down); color: white; }
+        .type-btn.active.watch { background: var(--watch); color: white; }
 
         .fab { position: fixed; bottom: 30px; right: 30px; background: var(--main-blue); color: white; width: 60px; height: 60px; border-radius: 30px; font-size: 30px; display: flex; align-items: center; justify-content: center; font-weight: 900; box-shadow: 0 10px 15px -3px rgba(37,99,235,0.4); cursor: pointer; border: none; z-index: 100; }
     </style>
@@ -112,9 +120,10 @@
 <div class="header">
     <div class="search-bar">🔍 <input type="text" id="searchInput" placeholder="搜尋代號或名稱..." oninput="renderGrid()"></div>
     <div class="tab-group">
-        <button class="tab-btn active" id="filter-active" onclick="setFilter('active')">庫存中</button>
+        <button class="tab-btn active" id="filter-active" onclick="setFilter('active')">持倉中</button>
+        <button class="tab-btn" id="filter-watch" onclick="setFilter('watch')">👀 觀望</button>
         <button class="tab-btn" id="filter-sold" onclick="setFilter('sold')">已清倉</button>
-        <button class="tab-btn" style="background:var(--main-dark); color:white; border:none;" onclick="openQuickPrice()">更新報價</button>
+        <button class="tab-btn" id="filter-all" onclick="setFilter('all')">全部</button>
     </div>
 </div>
 
@@ -125,37 +134,33 @@
     <div class="modal-container">
         <div class="modal-header">
             <div>
-                <span id="detTicker" style="font-size:24px; font-weight:900; color:#0f172a;">2330</span>
-                <span id="detName" style="font-size:14px; font-weight:700; color:#64748b; margin-left:8px;">台積電</span>
+                <span id="detTicker" style="font-size:24px; font-weight:900; color:#0f172a;">-</span>
+                <span id="detName" style="font-size:14px; font-weight:700; color:#64748b; margin-left:8px;">-</span>
             </div>
             <button onclick="closeDetail()" style="border:none; background:none; font-size:24px; color:#94a3b8; cursor:pointer;">×</button>
         </div>
         <div class="modal-content">
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:15px; background:#f8fafc; padding:15px; border-radius:12px; border:1px solid #e2e8f0; margin-bottom: 20px;">
-                <div><div class="stat-label">持有股數</div><div class="stat-value" id="detShares">0</div></div>
-                <div><div class="stat-label">均價成本</div><div class="stat-value" id="detAvgPrice">$0</div></div>
-                <div><div class="stat-label">目前報價</div><div class="stat-value" id="detCurrentPrice">$0</div></div>
-                <div><div class="stat-label">未實現損益</div><div class="stat-value" id="detUnrealized">$0</div></div>
-            </div>
+            <div id="detStats" style="display:grid; grid-template-columns:1fr 1fr; gap:15px; background:#f8fafc; padding:15px; border-radius:12px; border:1px solid #e2e8f0; margin-bottom: 20px;">
+                </div>
 
             <div style="font-size:14px; font-weight:900; color:#0f172a; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
-                <span>📝 歷史交易明細</span>
-                <button onclick="openForm({ticker: document.getElementById('detTicker').innerText, name: document.getElementById('detName').innerText})" style="font-size:12px; padding:4px 8px; background:var(--main-blue); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">+ 新增紀錄</button>
+                <span>📝 歷史紀錄</span>
+                <button onclick="openForm({ticker: document.getElementById('detTicker').innerText, name: document.getElementById('detName').innerText})" style="font-size:12px; padding:6px 10px; background:var(--main-blue); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">+ 新增</button>
             </div>
             
-            <div id="txList" class="tx-list">
-                </div>
+            <div id="txList" class="tx-list"></div>
         </div>
     </div>
 </div>
 
 <div id="formModal" class="modal" style="z-index: 300;">
     <div class="form-box">
-        <h3 style="margin-top:0; font-size:20px; font-weight:900; color:#0f172a;">新增交易紀錄</h3>
+        <h3 style="margin-top:0; font-size:20px; font-weight:900; color:#0f172a;">新增紀錄</h3>
         
         <div class="type-toggle">
             <div class="type-btn active buy" id="typeBuy" onclick="setTxType('buy')">買進</div>
             <div class="type-btn sell" id="typeSell" onclick="setTxType('sell')">賣出</div>
+            <div class="type-btn watch" id="typeWatch" onclick="setTxType('watch')">👀 觀望</div>
         </div>
 
         <div style="display:grid; grid-template-columns:1fr 2fr; gap:10px;">
@@ -163,7 +168,7 @@
             <div class="input-group"><label>名稱</label><input type="text" class="input-control" id="formName" placeholder="台積電"></div>
         </div>
 
-        <div style="display:grid; grid-template-columns:2fr 1fr; gap:10px;">
+        <div style="display:grid; grid-template-columns:2fr 1fr; gap:10px;" id="qtyGroup">
             <div class="input-group"><label>數量</label><input type="number" class="input-control" id="formQty" placeholder="1000"></div>
             <div class="input-group"><label>單位</label>
                 <select class="input-control" id="formUnit">
@@ -174,11 +179,11 @@
         </div>
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <div class="input-group"><label>成交單價</label><input type="number" step="0.01" class="input-control" id="formPrice"></div>
-            <div class="input-group"><label>交易日期</label><input type="date" class="input-control" id="formDate"></div>
+            <div class="input-group"><label id="priceLabel">成交單價</label><input type="number" step="0.01" class="input-control" id="formPrice"></div>
+            <div class="input-group"><label>日期</label><input type="date" class="input-control" id="formDate"></div>
         </div>
         
-        <div class="input-group"><label>券商/備註</label><input type="text" class="input-control" id="formMemo" placeholder="如: 元大定期定額"></div>
+        <div class="input-group"><label>備註/策略</label><input type="text" class="input-control" id="formMemo" placeholder="如: 定期定額 / 等待突破"></div>
 
         <button onclick="saveTransaction()" style="width:100%; padding:14px; background:var(--main-dark); color:white; border:none; border-radius:10px; font-size:16px; font-weight:900; cursor:pointer; margin-top:10px;">確認送出</button>
         <button onclick="closeForm()" style="width:100%; padding:12px; background:transparent; color:#64748b; border:none; margin-top:5px; font-weight:700; cursor:pointer;">取消</button>
@@ -186,36 +191,43 @@
 </div>
 
 <script>
-    // 密碼盤邏輯 (0000)
+    // 🐛 修正：密碼盤邏輯 (currentPin.length < 4)
     let currentPin = '';
     function pressKey(key) {
         if (key === 'back') currentPin = currentPin.slice(0, -1);
-        else if (currentPin < 4) currentPin += key;
+        else if (currentPin.length < 4) currentPin += key; // 這裡加上了 .length
+        
         for (let i = 0; i < 4; i++) document.getElementById(`dot-${i}`).className = i < currentPin.length ? 'dot filled' : 'dot';
+        
         if (currentPin.length === 4) {
             setTimeout(() => {
-                if (currentPin === '0000') document.getElementById('loginScreen').style.display = 'none';
-                else { currentPin = ''; for(let i=0;i<4;i++) document.getElementById(`dot-${i}`).className='dot'; }
+                if (currentPin === '0000') { document.body.className = 'mobile-view'; document.getElementById('loginScreen').style.display = 'none'; }
+                else if (currentPin === '1234') { document.body.className = 'desktop-view'; document.getElementById('loginScreen').style.display = 'none'; }
+                else { Swal.fire({icon:"error", title:"驗證失敗", text:"密碼不正確", confirmButtonColor:"#2563eb"}); currentPin = ''; for(let i=0;i<4;i++) document.getElementById(`dot-${i}`).className='dot'; }
             }, 100);
         }
     }
 
-    // --- Firebase 區塊 (請填入新金鑰) ---
+    // --- Firebase 區塊 (請保留原本空白，後續再填) ---
     const firebaseConfig = {
-      apiKey: "請填入你的_API_KEY",
+      apiKey: "請填入",
       authDomain: "請填入",
       projectId: "請填入",
       storageBucket: "請填入",
       messagingSenderId: "請填入",
       appId: "請填入"
     };
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+    // 預防 Firebase 未設定時報錯影響預覽
+    let db = null;
+    try {
+        firebase.initializeApp(firebaseConfig);
+        db = firebase.firestore();
+    } catch(e) { console.log("等待 Firebase 設定"); }
 
     let allTransactions = [];
-    let marketPrices = {}; // { "2330": 1000, "0050": 150 }
-    let portfolio = {}; // 彙整後的資產組合
-    let currentFilter = 'active'; // 預設看持倉
+    let marketPrices = {}; 
+    let portfolio = {}; 
+    let currentFilter = 'active'; 
     let formTxType = 'buy';
 
     function setFilter(type) {
@@ -229,6 +241,11 @@
         formTxType = type;
         document.getElementById('typeBuy').className = `type-btn buy ${type==='buy'?'active':''}`;
         document.getElementById('typeSell').className = `type-btn sell ${type==='sell'?'active':''}`;
+        document.getElementById('typeWatch').className = `type-btn watch ${type==='watch'?'active':''}`;
+        
+        // 觀望模式隱藏數量
+        document.getElementById('qtyGroup').style.display = type === 'watch' ? 'none' : 'grid';
+        document.getElementById('priceLabel').innerText = type === 'watch' ? '紀錄目標價' : '成交單價';
     }
 
     function openForm(prefill = null) {
@@ -244,22 +261,23 @@
         document.getElementById('formQty').value = '';
         document.getElementById('formPrice').value = '';
         document.getElementById('formMemo').value = '';
+        setTxType('buy'); // 預設買進
     }
 
     function closeForm() { document.getElementById('formModal').style.display = 'none'; }
     function closeDetail() { document.getElementById('detailModal').style.display = 'none'; }
 
-    // 儲存交易紀錄 (流水帳)
     async function saveTransaction() {
+        if(!db) return Swal.fire("提示", "請先設定 Firebase 金鑰", "info");
+
         const ticker = document.getElementById('formTicker').value.trim();
         const name = document.getElementById('formName').value.trim();
-        let qty = parseInt(document.getElementById('formQty').value) || 0;
+        let qty = formTxType === 'watch' ? 0 : (parseInt(document.getElementById('formQty').value) || 0);
         const price = parseFloat(document.getElementById('formPrice').value) || 0;
         
-        if (!ticker || !name || qty <= 0 || price <= 0) return Swal.fire("錯誤", "資料填寫不完整", "error");
+        if (!ticker || !name || price <= 0 || (formTxType !== 'watch' && qty <= 0)) return Swal.fire("錯誤", "資料填寫不完整", "error");
 
-        // 單位換算：如果是「張」，就自動 * 1000 轉成「股」
-        if (document.getElementById('formUnit').value === 'lot') qty = qty * 1000;
+        if (formTxType !== 'watch' && document.getElementById('formUnit').value === 'lot') qty = qty * 1000;
 
         const txData = {
             ticker, name, price,
@@ -272,48 +290,40 @@
 
         try {
             Swal.fire({ title: '紀錄中...', didOpen: () => Swal.showLoading() });
-            
-            // 寫入交易紀錄表
             await db.collection("stock_transactions").add(txData);
             
-            // 如果這檔股票還沒有建立最新報價，順便建立一下
-            if (!marketPrices[ticker]) {
-                await db.collection("stock_prices").doc(ticker).set({ price: price });
+            if (!marketPrices[ticker] || formTxType === 'watch') {
+                await db.collection("stock_prices").doc(ticker).set({ price: price, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
             }
 
             Swal.fire({icon: "success", title: "完成", timer: 1000, showConfirmButton: false});
             closeForm();
             
-            // 如果是在詳細頁面新增的，自動重整詳細頁面
             if (document.getElementById('detailModal').style.display === 'flex') {
                 setTimeout(() => showDetail(ticker), 500); 
             }
         } catch (e) { Swal.fire("錯誤", e.message, "error"); }
     }
 
-    // 監聽交易紀錄與報價
-    db.collection("stock_prices").onSnapshot(snap => {
-        snap.forEach(doc => marketPrices[doc.id] = doc.data().price);
-        calculatePortfolio();
-    });
+    if(db) {
+        db.collection("stock_prices").onSnapshot(snap => {
+            snap.forEach(doc => marketPrices[doc.id] = doc.data().price);
+            calculatePortfolio();
+        });
 
-    db.collection("stock_transactions").orderBy("date", "asc").onSnapshot(snap => {
-        allTransactions = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        calculatePortfolio();
-    });
+        db.collection("stock_transactions").orderBy("date", "asc").onSnapshot(snap => {
+            allTransactions = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            calculatePortfolio();
+        });
+    }
 
-    // 核心邏輯：將流水帳計算成「資產總覽」
     function calculatePortfolio() {
         portfolio = {};
-        let totalUnrealized = 0;
-        let totalCost = 0;
-        let totalMarket = 0;
-        let totalRealized = 0;
+        let totalUnrealized = 0, totalCost = 0, totalMarket = 0, totalRealized = 0;
 
-        // 依序處理每一筆交易
         allTransactions.forEach(tx => {
             if (!portfolio[tx.ticker]) {
-                portfolio[tx.ticker] = { ticker: tx.ticker, name: tx.name, shares: 0, totalCost: 0, realizedGain: 0, history: [] };
+                portfolio[tx.ticker] = { ticker: tx.ticker, name: tx.name, shares: 0, totalCost: 0, realizedGain: 0, history: [], hasTrade: false, watchPrice: 0 };
             }
             let p = portfolio[tx.ticker];
             p.history.push(tx);
@@ -321,26 +331,32 @@
             if (tx.type === 'buy') {
                 p.shares += tx.quantity;
                 p.totalCost += (tx.price * tx.quantity);
+                p.hasTrade = true;
             } else if (tx.type === 'sell') {
-                // 計算賣出時的平均成本，用來算已實現損益
                 let avgCost = p.shares > 0 ? (p.totalCost / p.shares) : 0;
                 let sellValue = tx.price * tx.quantity;
                 let costBasis = avgCost * tx.quantity;
-                
                 p.realizedGain += (sellValue - costBasis);
                 p.shares -= tx.quantity;
-                p.totalCost -= costBasis; // 等比例扣除成本
+                p.totalCost -= costBasis; 
+                p.hasTrade = true;
+            } else if (tx.type === 'watch') {
+                p.watchPrice = tx.price; // 記錄最後一次的觀望價
             }
         });
 
-        // 結算當前狀態
         Object.values(portfolio).forEach(p => {
-            p.currentPrice = marketPrices[p.ticker] || (p.shares>0 ? (p.totalCost/p.shares) : 0);
+            // 判定狀態
+            if (p.shares > 0) p.status = 'active';
+            else if (p.hasTrade) p.status = 'sold';
+            else p.status = 'watch';
+
+            p.currentPrice = marketPrices[p.ticker] || (p.status === 'watch' ? p.watchPrice : (p.shares>0 ? (p.totalCost/p.shares) : 0));
             p.avgPrice = p.shares > 0 ? (p.totalCost / p.shares) : 0;
             p.marketValue = p.shares * p.currentPrice;
             p.unrealizedGain = p.marketValue - p.totalCost;
 
-            if (p.shares > 0) {
+            if (p.status === 'active') {
                 totalCost += p.totalCost;
                 totalMarket += p.marketValue;
                 totalUnrealized += p.unrealizedGain;
@@ -348,7 +364,6 @@
             totalRealized += p.realizedGain;
         });
 
-        // 更新儀表板
         const fmt = val => '$' + Math.round(val).toLocaleString();
         document.getElementById('dash-cost').innerText = fmt(totalCost);
         document.getElementById('dash-market').innerText = fmt(totalMarket);
@@ -361,7 +376,6 @@
         renderGrid();
     }
 
-    // 渲染股票方格
     function renderGrid() {
         const search = document.getElementById('searchInput').value.toLowerCase();
         const grid = document.getElementById('portfolioGrid');
@@ -369,97 +383,114 @@
 
         let displayItems = Object.values(portfolio).filter(p => {
             const matchSearch = p.ticker.includes(search) || p.name.includes(search);
-            const matchFilter = currentFilter === 'all' || (currentFilter === 'active' ? p.shares > 0 : p.shares === 0);
-            // 如果是已清倉，且該檔股票從未賣出過(只是建檔錯誤等)，濾掉
-            return matchSearch && matchFilter && (p.shares > 0 || p.history.length > 0);
+            const matchFilter = currentFilter === 'all' || p.status === currentFilter;
+            return matchSearch && matchFilter;
         });
 
         displayItems.forEach(p => {
-            let gain = p.shares > 0 ? p.unrealizedGain : p.realizedGain;
-            let percent = p.shares > 0 && p.totalCost > 0 ? (gain / p.totalCost) * 100 : 0;
-            let colorClass = gain >= 0 ? 'up-text' : 'down-text';
+            let badge = p.status === 'sold' ? '<div class="badge-sold">已清倉</div>' : (p.status === 'watch' ? '<div class="badge-watch">👀 觀望中</div>' : '');
+            
+            let contentHtml = '';
+            if (p.status === 'watch') {
+                let diff = p.currentPrice - p.watchPrice;
+                let percent = p.watchPrice ? (diff/p.watchPrice)*100 : 0;
+                contentHtml = `
+                    <div class="grid-row"><span>紀錄價</span><span class="grid-val">$${p.watchPrice.toFixed(2)}</span></div>
+                    <div class="grid-row"><span>最新報價</span><span class="grid-val">$${p.currentPrice.toFixed(2)}</span></div>
+                    <div style="border-top:1px solid #f1f5f9; margin-top:8px; padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:11px; color:#94a3b8; font-weight:700;">距紀錄價</span>
+                        <span class="${diff>=0?'up-text':'down-text'}" style="font-size:14px;">${diff>=0?'+':''}${diff.toFixed(1)} (${percent.toFixed(1)}%)</span>
+                    </div>
+                `;
+            } else {
+                let gain = p.status === 'active' ? p.unrealizedGain : p.realizedGain;
+                let percent = p.totalCost > 0 ? (gain / p.totalCost) * 100 : 0;
+                contentHtml = `
+                    <div class="grid-row"><span>持有股數</span><span class="grid-val">${p.shares.toLocaleString()} 股</span></div>
+                    <div class="grid-row"><span>均價/現價</span><span class="grid-val">$${p.avgPrice.toFixed(2)} / $${p.currentPrice.toFixed(2)}</span></div>
+                    <div style="border-top:1px solid #f1f5f9; margin-top:8px; padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size:11px; color:#94a3b8; font-weight:700;">${p.status==='active' ? '未實現' : '已實現'}損益</span>
+                        <span class="${gain>=0?'up-text':'down-text'}" style="font-size:14px;">${gain>=0?'+':''}${Math.round(gain).toLocaleString()}</span>
+                    </div>
+                `;
+            }
 
             grid.innerHTML += `
                 <div class="grid-item" onclick="showDetail('${p.ticker}')">
+                    ${badge}
                     <div class="grid-header">
                         <div class="grid-ticker">${p.ticker}</div>
                         <div class="grid-name">${p.name}</div>
                     </div>
-                    <div class="grid-row"><span>持有股數</span><span class="grid-val">${p.shares.toLocaleString()} 股</span></div>
-                    <div class="grid-row"><span>均價/現價</span><span class="grid-val">$${p.avgPrice.toFixed(2)} / $${p.currentPrice.toFixed(2)}</span></div>
-                    <div style="border-top:1px solid #f1f5f9; margin-top:8px; padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:11px; color:#94a3b8; font-weight:700;">${p.shares>0 ? '未實現' : '已實現'}損益</span>
-                        <span class="${colorClass}" style="font-size:14px;">${gain>=0?'+':''}${Math.round(gain).toLocaleString()}</span>
-                    </div>
+                    ${contentHtml}
                 </div>
             `;
         });
     }
 
-    // 顯示詳細與交易紀錄
     function showDetail(ticker) {
         const p = portfolio[ticker];
         if (!p) return;
 
         document.getElementById('detTicker').innerText = p.ticker;
         document.getElementById('detName').innerText = p.name;
-        document.getElementById('detShares').innerText = p.shares.toLocaleString() + ' 股';
-        document.getElementById('detAvgPrice').innerText = '$' + p.avgPrice.toFixed(2);
-        document.getElementById('detCurrentPrice').innerText = '$' + p.currentPrice.toFixed(2);
         
-        let unReal = Math.round(p.unrealizedGain);
-        document.getElementById('detUnrealized').innerText = (unReal>=0?'+':'') + unReal.toLocaleString();
-        document.getElementById('detUnrealized').className = 'stat-value ' + (unReal>=0?'up-text':'down-text');
+        let statsHtml = '';
+        if (p.status === 'watch') {
+            statsHtml = `
+                <div><div class="stat-label">狀態</div><div class="stat-value" style="color:var(--watch);">👀 觀望中</div></div>
+                <div><div class="stat-label">紀錄價</div><div class="stat-value">$${p.watchPrice.toFixed(2)}</div></div>
+                <div><div class="stat-label">最新報價</div><div class="stat-value">$${p.currentPrice.toFixed(2)}</div></div>
+            `;
+        } else {
+            let unReal = Math.round(p.unrealizedGain);
+            let unRealStr = (unReal>=0?'+':'') + unReal.toLocaleString();
+            let unRealClass = 'stat-value ' + (unReal>=0?'up-text':'down-text');
+            statsHtml = `
+                <div><div class="stat-label">持有股數</div><div class="stat-value">${p.shares.toLocaleString()}</div></div>
+                <div><div class="stat-label">均價成本</div><div class="stat-value">$${p.avgPrice.toFixed(2)}</div></div>
+                <div><div class="stat-label">目前報價</div><div class="stat-value">$${p.currentPrice.toFixed(2)}</div></div>
+                <div><div class="stat-label">未實現損益</div><div class="${unRealClass}">${unRealStr}</div></div>
+            `;
+        }
+        document.getElementById('detStats').innerHTML = statsHtml;
 
-        // 渲染歷史交易表
-        const listHtml = p.history.slice().reverse().map(tx => `
+        window.deleteTx = async function(id) {
+            const res = await Swal.fire({ title: '刪除紀錄？', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444' });
+            if(res.isConfirmed) {
+                await db.collection("stock_transactions").doc(id).delete();
+                setTimeout(() => showDetail(ticker), 500); 
+            }
+        };
+
+        const listHtml = p.history.slice().reverse().map(tx => {
+            let typeLabel = tx.type === 'buy' ? '買進' : (tx.type === 'sell' ? '賣出' : '觀望');
+            let rightHtml = tx.type === 'watch' 
+                ? `<div style="font-size:14px; font-weight:700; color:#0f172a;">紀錄價 $${tx.price}</div>`
+                : `<div style="font-size:15px; font-weight:900; color:#0f172a;">${tx.quantity.toLocaleString()} 股</div>
+                   <div style="font-size:13px; color:#475569; font-weight:700;">單價 $${tx.price}</div>`;
+
+            return `
             <div class="tx-item">
-                <div>
-                    <div class="tx-type ${tx.type}">${tx.type === 'buy' ? '買進' : '賣出'}</div>
+                <div style="flex:1;">
+                    <span class="tx-type ${tx.type}">${typeLabel}</span>
                     <div style="font-size:12px; color:#64748b; margin-top:4px; font-weight:bold;">${tx.date}</div>
                 </div>
-                <div style="text-align:right;">
-                    <div style="font-size:15px; font-weight:900; color:#0f172a;">${tx.quantity.toLocaleString()} 股</div>
-                    <div style="font-size:13px; color:#475569; font-weight:700;">成交價 $${tx.price}</div>
+                <div style="flex:1; text-align:right; margin-right:10px;">
+                    ${rightHtml}
                 </div>
+                <button onclick="deleteTx('${tx.id}')" style="border:none; background:transparent; color:#ef4444; font-size:18px; cursor:pointer; padding:0 5px;">🗑️</button>
             </div>
-        `).join('');
+            `;
+        }).join('');
         
         document.getElementById('txList').innerHTML = listHtml || '<div style="text-align:center; color:#94a3b8; font-size:13px; padding:20px;">尚無紀錄</div>';
-        
         document.getElementById('detailModal').style.display = 'flex';
     }
 
-    // 批量更新報價 (直接更新 marketPrices 表)
-    async function openQuickPrice() {
-        let activeTickers = Object.values(portfolio).filter(p => p.shares > 0);
-        if (activeTickers.length === 0) return Swal.fire("提示", "目前無持倉股票可更新", "info");
-
-        let html = activeTickers.map(p => `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
-                <div style="font-weight:900; color:#0f172a; font-size:14px;">${p.ticker} <span style="font-size:12px; color:#64748b; font-weight:700;">${p.name}</span></div>
-                <input type="number" step="0.01" class="bulk-input" data-ticker="${p.ticker}" value="${p.currentPrice}" style="width:90px; padding:6px; border-radius:6px; border:1px solid #cbd5e1; font-weight:900; text-align:right;">
-            </div>
-        `).join('');
-
-        const { value: res } = await Swal.fire({
-            title: '快速更新報價',
-            html: `<div style="max-height:60vh; overflow-y:auto; padding:5px;">${html}</div>`,
-            showCancelButton: true,
-            confirmButtonText: '全部儲存',
-            confirmButtonColor: '#2563eb',
-            preConfirm: () => Array.from(document.querySelectorAll('.bulk-input')).map(i => ({ ticker: i.dataset.ticker, price: parseFloat(i.value) }))
-        });
-
-        if (res) {
-            Swal.fire({ title: '更新中...', didOpen: () => Swal.showLoading() });
-            const batch = db.batch();
-            res.forEach(item => {
-                batch.set(db.collection("stock_prices").doc(item.ticker), { price: item.price, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-            });
-            await batch.commit();
-            Swal.fire({icon: "success", title: "完成", timer: 1000});
-        }
+    // 假裝更新資料庫（預覽用）
+    function openQuickPrice() {
+        Swal.fire("提示", "請先設定 Firebase 金鑰才能更新報價喔！", "info");
     }
 </script>
 </body>
