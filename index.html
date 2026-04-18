@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stock Pro 專業部位管理</title>
+    <title>Stock Pro 專業部位管理 (單機展示版)</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <style>
@@ -24,7 +23,8 @@
         .numpad button:active { background: var(--main-blue); }
 
         /* 儀表板 */
-        .dashboard { background: var(--main-dark); color: white; padding: 15px; border-radius: 0 0 24px 24px; display: flex; flex-direction: column; gap: 10px; }
+        .dashboard { background: var(--main-dark); color: white; padding: 15px; border-radius: 0 0 24px 24px; display: flex; flex-direction: column; gap: 10px; position: relative; }
+        .demo-badge { position: absolute; top: 15px; right: 15px; background: #f59e0b; color: #0f172a; font-size: 10px; font-weight: 900; padding: 3px 8px; border-radius: 12px; }
         .dash-section { background: rgba(255,255,255,0.05); border-radius: 12px; padding: 12px; }
         .dash-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
         .stat-label { font-size: 11px; color: #64748b; font-weight: 700; margin-bottom: 2px; }
@@ -60,7 +60,7 @@
 
         /* 彈窗 */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15,23,42,0.8); z-index: 200; align-items: center; justify-content: center; backdrop-filter: blur(4px); }
-        .modal-container { background: white; width: 92%; max-width: 500px; border-radius: 20px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; }
+        .modal-container { background: white; width: 92%; max-width: 500px; border-radius: 20px; max-height: 85vh; display: flex; flex-direction: column; overflow: hidden; margin: 20px auto; }
         .modal-header { padding: 15px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; }
         .modal-content { padding: 20px; overflow-y: auto; flex: 1; }
         
@@ -70,6 +70,12 @@
         .tx-type.buy { color: var(--up); background: rgba(239, 68, 68, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 900; }
         .tx-type.sell { color: var(--down); background: rgba(16, 185, 129, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 900; }
         .tx-type.watch { color: var(--watch); background: rgba(245, 158, 11, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 900; }
+
+        /* 圖表 */
+        .chart-wrapper { margin-top: 20px; border: 1px solid #e2e8f0; padding: 15px; border-radius: 12px; background: white; }
+        .chart-tabs { display: flex; background: #e2e8f0; border-radius: 8px; overflow: hidden; padding: 2px; margin-bottom: 10px; gap: 2px; }
+        .chart-tab { flex: 1; padding: 6px 2px; font-size: 11px; border: none; background: transparent; cursor: pointer; font-weight: 700; font-family: inherit; border-radius: 6px; color: #475569; }
+        .chart-tab.active { background: white; color: var(--main-dark); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
 
         /* 表單 */
         .form-box { background: white; width: 92%; max-width: 500px; border-radius: 24px; padding: 25px; overflow-y: auto; max-height: 90vh; }
@@ -89,7 +95,8 @@
 <body class="mobile-view">
 
 <div id="loginScreen">
-    <div style="font-size: 28px; font-weight: 900; margin-bottom: 30px; color: white;">Stock Pro</div>
+    <div style="font-size: 28px; font-weight: 900; margin-bottom: 10px; color: white;">Stock Pro</div>
+    <div style="font-size: 12px; font-weight: bold; margin-bottom: 30px; color: #f59e0b;">(單機展示模式)</div>
     <div class="pin-dots">
         <span class="dot" id="dot-0"></span><span class="dot" id="dot-1"></span>
         <span class="dot" id="dot-2"></span><span class="dot" id="dot-3"></span>
@@ -103,6 +110,7 @@
 </div>
 
 <div class="dashboard">
+    <div class="demo-badge">展示資料</div>
     <div class="dash-section">
         <div style="font-size: 12px; color:#94a3b8; font-weight: 900; margin-bottom: 8px;">📊 庫存總覽 (未實現)</div>
         <div class="dash-grid">
@@ -124,6 +132,7 @@
         <button class="tab-btn" id="filter-watch" onclick="setFilter('watch')">👀 觀望</button>
         <button class="tab-btn" id="filter-sold" onclick="setFilter('sold')">已清倉</button>
         <button class="tab-btn" id="filter-all" onclick="setFilter('all')">全部</button>
+        <button class="tab-btn" style="background:var(--main-blue); color:white; border:none;" onclick="openQuickPrice()">批量修改時價</button>
     </div>
 </div>
 
@@ -140,10 +149,19 @@
             <button onclick="closeDetail()" style="border:none; background:none; font-size:24px; color:#94a3b8; cursor:pointer;">×</button>
         </div>
         <div class="modal-content">
-            <div id="detStats" style="display:grid; grid-template-columns:1fr 1fr; gap:15px; background:#f8fafc; padding:15px; border-radius:12px; border:1px solid #e2e8f0; margin-bottom: 20px;">
-                </div>
+            <div id="detStats" style="display:grid; grid-template-columns:1fr 1fr; gap:15px; background:#f8fafc; padding:15px; border-radius:12px; border:1px solid #e2e8f0; margin-bottom: 20px;"></div>
 
-            <div style="font-size:14px; font-weight:900; color:#0f172a; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+            <div class="chart-wrapper">
+                <div style="font-size:13px; font-weight:900; color:#0f172a; margin-bottom:10px;">📈 時價線圖</div>
+                <div class="chart-tabs">
+                    <button class="chart-tab active" id="tab-month" onclick="updateChart('month')">本月</button>
+                    <button class="chart-tab" id="tab-quarter" onclick="updateChart('quarter')">本季</button>
+                    <button class="chart-tab" id="tab-year" onclick="updateChart('year')">本年</button>
+                </div>
+                <div style="height: 180px; width: 100%;"><canvas id="priceChart"></canvas></div>
+            </div>
+
+            <div style="font-size:14px; font-weight:900; color:#0f172a; margin:15px 0 10px; display:flex; justify-content:space-between; align-items:center;">
                 <span>📝 歷史紀錄</span>
                 <button onclick="openForm({ticker: document.getElementById('detTicker').innerText, name: document.getElementById('detName').innerText})" style="font-size:12px; padding:6px 10px; background:var(--main-blue); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">+ 新增</button>
             </div>
@@ -191,11 +209,11 @@
 </div>
 
 <script>
-    // 🐛 修正：密碼盤邏輯 (currentPin.length < 4)
+    // --- 密碼盤 ---
     let currentPin = '';
     function pressKey(key) {
         if (key === 'back') currentPin = currentPin.slice(0, -1);
-        else if (currentPin.length < 4) currentPin += key; // 這裡加上了 .length
+        else if (currentPin.length < 4) currentPin += key; 
         
         for (let i = 0; i < 4; i++) document.getElementById(`dot-${i}`).className = i < currentPin.length ? 'dot filled' : 'dot';
         
@@ -208,28 +226,53 @@
         }
     }
 
-    // --- Firebase 區塊 (請保留原本空白，後續再填) ---
-    const firebaseConfig = {
-      apiKey: "請填入",
-      authDomain: "請填入",
-      projectId: "請填入",
-      storageBucket: "請填入",
-      messagingSenderId: "請填入",
-      appId: "請填入"
-    };
-    // 預防 Firebase 未設定時報錯影響預覽
-    let db = null;
-    try {
-        firebase.initializeApp(firebaseConfig);
-        db = firebase.firestore();
-    } catch(e) { console.log("等待 Firebase 設定"); }
+    // --- 單機模擬資料區 ---
+    let allTransactions = [
+        { id: "tx1", ticker: "2330", name: "台積電", quantity: 1000, price: 580, type: "buy", date: "2023-11-10", memo: "波段起漲" },
+        { id: "tx2", ticker: "2330", name: "台積電", quantity: 500, price: 720, type: "buy", date: "2024-02-15", memo: "突破加碼" },
+        { id: "tx3", ticker: "0050", name: "元大台灣50", quantity: 3000, price: 140, type: "buy", date: "2023-12-01", memo: "長線定存" },
+        { id: "tx4", ticker: "2603", name: "長榮", quantity: 2000, price: 110, type: "buy", date: "2023-10-05", memo: "航運反彈" },
+        { id: "tx5", ticker: "2603", name: "長榮", quantity: 2000, price: 175, type: "sell", date: "2024-03-20", memo: "達到停利點" },
+        { id: "tx6", ticker: "2317", name: "鴻海", quantity: 0, price: 125, type: "watch", date: "2024-01-10", memo: "等拉回125再買" }
+    ];
 
-    let allTransactions = [];
-    let marketPrices = {}; 
+    // 生成亂數 K 線圖歷史資料 (365天)
+    function generateMockHistory(basePrice, volatility) {
+        let history = [];
+        let cur = basePrice;
+        let today = new Date();
+        for (let i = 365; i >= 0; i--) {
+            let d = new Date(today);
+            d.setDate(d.getDate() - i);
+            cur = cur * (1 + (Math.random() * volatility * 2 - volatility));
+            history.push({ date: d.toISOString().split('T')[0], price: parseFloat(cur.toFixed(2)) });
+        }
+        return history;
+    }
+
+    let marketPrices = {
+        "2330": { price: 820, history: generateMockHistory(550, 0.015) },
+        "0050": { price: 165, history: generateMockHistory(135, 0.008) },
+        "2603": { price: 170, history: generateMockHistory(100, 0.02) },
+        "2317": { price: 155, history: generateMockHistory(110, 0.015) }
+    };
+    
+    // 覆寫最新的價格為今日
+    Object.keys(marketPrices).forEach(k => {
+        let h = marketPrices[k].history;
+        h[h.length-1].price = marketPrices[k].price;
+    });
+
     let portfolio = {}; 
     let currentFilter = 'active'; 
     let formTxType = 'buy';
+    let currentChartTicker = '';
+    let currentChartObj = null;
 
+    // 啟動計算
+    window.onload = () => { calculatePortfolio(); };
+
+    // --- 介面邏輯 ---
     function setFilter(type) {
         currentFilter = type;
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -243,9 +286,8 @@
         document.getElementById('typeSell').className = `type-btn sell ${type==='sell'?'active':''}`;
         document.getElementById('typeWatch').className = `type-btn watch ${type==='watch'?'active':''}`;
         
-        // 觀望模式隱藏數量
         document.getElementById('qtyGroup').style.display = type === 'watch' ? 'none' : 'grid';
-        document.getElementById('priceLabel').innerText = type === 'watch' ? '紀錄目標價' : '成交單價';
+        document.getElementById('priceLabel').innerText = type === 'watch' ? '設定觀望價' : '成交單價';
     }
 
     function openForm(prefill = null) {
@@ -261,60 +303,45 @@
         document.getElementById('formQty').value = '';
         document.getElementById('formPrice').value = '';
         document.getElementById('formMemo').value = '';
-        setTxType('buy'); // 預設買進
+        setTxType('buy'); 
     }
 
     function closeForm() { document.getElementById('formModal').style.display = 'none'; }
     function closeDetail() { document.getElementById('detailModal').style.display = 'none'; }
 
-    async function saveTransaction() {
-        if(!db) return Swal.fire("提示", "請先設定 Firebase 金鑰", "info");
-
+    // 單機版儲存功能
+    function saveTransaction() {
         const ticker = document.getElementById('formTicker').value.trim();
         const name = document.getElementById('formName').value.trim();
         let qty = formTxType === 'watch' ? 0 : (parseInt(document.getElementById('formQty').value) || 0);
         const price = parseFloat(document.getElementById('formPrice').value) || 0;
         
         if (!ticker || !name || price <= 0 || (formTxType !== 'watch' && qty <= 0)) return Swal.fire("錯誤", "資料填寫不完整", "error");
-
         if (formTxType !== 'watch' && document.getElementById('formUnit').value === 'lot') qty = qty * 1000;
 
         const txData = {
+            id: 'demo_' + Date.now(),
             ticker, name, price,
             quantity: qty,
             type: formTxType,
             date: document.getElementById('formDate').value,
-            memo: document.getElementById('formMemo').value,
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            memo: document.getElementById('formMemo').value
         };
 
-        try {
-            Swal.fire({ title: '紀錄中...', didOpen: () => Swal.showLoading() });
-            await db.collection("stock_transactions").add(txData);
-            
-            if (!marketPrices[ticker] || formTxType === 'watch') {
-                await db.collection("stock_prices").doc(ticker).set({ price: price, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
-            }
+        allTransactions.push(txData);
+        
+        // 確保 marketPrices 有這檔
+        if (!marketPrices[ticker]) {
+            marketPrices[ticker] = { price: price, history: [{ date: txData.date, price: price }] };
+        }
 
-            Swal.fire({icon: "success", title: "完成", timer: 1000, showConfirmButton: false});
-            closeForm();
-            
-            if (document.getElementById('detailModal').style.display === 'flex') {
-                setTimeout(() => showDetail(ticker), 500); 
-            }
-        } catch (e) { Swal.fire("錯誤", e.message, "error"); }
-    }
-
-    if(db) {
-        db.collection("stock_prices").onSnapshot(snap => {
-            snap.forEach(doc => marketPrices[doc.id] = doc.data().price);
-            calculatePortfolio();
-        });
-
-        db.collection("stock_transactions").orderBy("date", "asc").onSnapshot(snap => {
-            allTransactions = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            calculatePortfolio();
-        });
+        Swal.fire({icon: "success", title: "完成 (單機儲存)", timer: 1000, showConfirmButton: false});
+        closeForm();
+        calculatePortfolio();
+        
+        if (document.getElementById('detailModal').style.display === 'flex') {
+            showDetail(ticker); 
+        }
     }
 
     function calculatePortfolio() {
@@ -341,17 +368,17 @@
                 p.totalCost -= costBasis; 
                 p.hasTrade = true;
             } else if (tx.type === 'watch') {
-                p.watchPrice = tx.price; // 記錄最後一次的觀望價
+                p.watchPrice = tx.price; 
             }
         });
 
         Object.values(portfolio).forEach(p => {
-            // 判定狀態
             if (p.shares > 0) p.status = 'active';
             else if (p.hasTrade) p.status = 'sold';
             else p.status = 'watch';
 
-            p.currentPrice = marketPrices[p.ticker] || (p.status === 'watch' ? p.watchPrice : (p.shares>0 ? (p.totalCost/p.shares) : 0));
+            let mData = marketPrices[p.ticker] || {};
+            p.currentPrice = mData.price || (p.status === 'watch' ? p.watchPrice : (p.shares>0 ? (p.totalCost/p.shares) : 0));
             p.avgPrice = p.shares > 0 ? (p.totalCost / p.shares) : 0;
             p.marketValue = p.shares * p.currentPrice;
             p.unrealizedGain = p.marketValue - p.totalCost;
@@ -396,10 +423,10 @@
                 let percent = p.watchPrice ? (diff/p.watchPrice)*100 : 0;
                 contentHtml = `
                     <div class="grid-row"><span>紀錄價</span><span class="grid-val">$${p.watchPrice.toFixed(2)}</span></div>
-                    <div class="grid-row"><span>最新報價</span><span class="grid-val">$${p.currentPrice.toFixed(2)}</span></div>
+                    <div class="grid-row"><span>目前時價</span><span class="grid-val" style="color:var(--main-blue); font-size:16px;">$${p.currentPrice.toFixed(2)}</span></div>
                     <div style="border-top:1px solid #f1f5f9; margin-top:8px; padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:11px; color:#94a3b8; font-weight:700;">距紀錄價</span>
-                        <span class="${diff>=0?'up-text':'down-text'}" style="font-size:14px;">${diff>=0?'+':''}${diff.toFixed(1)} (${percent.toFixed(1)}%)</span>
+                        <span style="font-size:11px; color:#94a3b8; font-weight:700;">距紀錄價損益</span>
+                        <span class="${diff>=0?'up-text':'down-text'}" style="font-size:14px;">${diff>=0?'+':''}${diff.toFixed(2)} (${percent.toFixed(1)}%)</span>
                     </div>
                 `;
             } else {
@@ -407,7 +434,7 @@
                 let percent = p.totalCost > 0 ? (gain / p.totalCost) * 100 : 0;
                 contentHtml = `
                     <div class="grid-row"><span>持有股數</span><span class="grid-val">${p.shares.toLocaleString()} 股</span></div>
-                    <div class="grid-row"><span>均價/現價</span><span class="grid-val">$${p.avgPrice.toFixed(2)} / $${p.currentPrice.toFixed(2)}</span></div>
+                    <div class="grid-row"><span>均價/時價</span><span class="grid-val">$${p.avgPrice.toFixed(2)} / $${p.currentPrice.toFixed(2)}</span></div>
                     <div style="border-top:1px solid #f1f5f9; margin-top:8px; padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
                         <span style="font-size:11px; color:#94a3b8; font-weight:700;">${p.status==='active' ? '未實現' : '已實現'}損益</span>
                         <span class="${gain>=0?'up-text':'down-text'}" style="font-size:14px;">${gain>=0?'+':''}${Math.round(gain).toLocaleString()}</span>
@@ -439,8 +466,8 @@
         if (p.status === 'watch') {
             statsHtml = `
                 <div><div class="stat-label">狀態</div><div class="stat-value" style="color:var(--watch);">👀 觀望中</div></div>
-                <div><div class="stat-label">紀錄價</div><div class="stat-value">$${p.watchPrice.toFixed(2)}</div></div>
-                <div><div class="stat-label">最新報價</div><div class="stat-value">$${p.currentPrice.toFixed(2)}</div></div>
+                <div><div class="stat-label">你的紀錄價</div><div class="stat-value">$${p.watchPrice.toFixed(2)}</div></div>
+                <div style="grid-column: span 2; background:#eff6ff; padding:10px; border-radius:8px;"><div class="stat-label" style="color:var(--main-blue);">目前時價</div><div class="stat-value" style="color:var(--main-blue); font-size:24px;">$${p.currentPrice.toFixed(2)}</div></div>
             `;
         } else {
             let unReal = Math.round(p.unrealizedGain);
@@ -458,8 +485,9 @@
         window.deleteTx = async function(id) {
             const res = await Swal.fire({ title: '刪除紀錄？', icon: 'warning', showCancelButton: true, confirmButtonColor: '#ef4444' });
             if(res.isConfirmed) {
-                await db.collection("stock_transactions").doc(id).delete();
-                setTimeout(() => showDetail(ticker), 500); 
+                allTransactions = allTransactions.filter(t => t.id !== id);
+                calculatePortfolio();
+                showDetail(ticker); 
             }
         };
 
@@ -485,12 +513,91 @@
         }).join('');
         
         document.getElementById('txList').innerHTML = listHtml || '<div style="text-align:center; color:#94a3b8; font-size:13px; padding:20px;">尚無紀錄</div>';
+        
+        currentChartTicker = ticker;
+        updateChart('month');
+        
         document.getElementById('detailModal').style.display = 'flex';
     }
 
-    // 假裝更新資料庫（預覽用）
-    function openQuickPrice() {
-        Swal.fire("提示", "請先設定 Firebase 金鑰才能更新報價喔！", "info");
+    // 更新圖表
+    function updateChart(timeframe) {
+        document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
+        document.getElementById(`tab-${timeframe}`).classList.add('active');
+        
+        let mData = marketPrices[currentChartTicker] || {};
+        let history = mData.history || [];
+        
+        let filtered = history;
+        const now = new Date();
+        let cutoff = new Date();
+        
+        if (timeframe === 'month') cutoff.setMonth(now.getMonth() - 1);
+        else if (timeframe === 'quarter') cutoff.setMonth(now.getMonth() - 3);
+        else if (timeframe === 'year') cutoff.setFullYear(now.getFullYear() - 1);
+
+        filtered = history.filter(h => new Date(h.date) >= cutoff);
+        if (filtered.length === 0 && history.length > 0) filtered = [history[history.length-1]];
+
+        const labels = filtered.map(h => h.date);
+        const data = filtered.map(h => h.price);
+
+        const ctx = document.getElementById('priceChart').getContext('2d');
+        if (currentChartObj) currentChartObj.destroy();
+        
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        currentChartObj = new Chart(ctx, {
+            type: 'line',
+            data: { labels, datasets: [{ data, borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235, 0.1)', fill: true, tension: 0.1, pointRadius: timeframe==='year'? 0 : 3 }] },
+            options: { 
+                responsive: true, maintainAspectRatio: false, 
+                plugins: { legend: { display: false } }, 
+                scales: { 
+                    x: { ticks: { maxTicksLimit: 5, font: {size: 10} } },
+                    y: { ticks: { font: {size: 10} } }
+                } 
+            }
+        });
+    }
+
+    // 單機版批量修改時價
+    async function openQuickPrice() {
+        let activeTickers = Object.values(portfolio).filter(p => p.shares > 0 || p.status === 'watch');
+        if (activeTickers.length === 0) return Swal.fire("提示", "目前沒有正在追蹤的股票", "info");
+
+        let html = activeTickers.map(p => `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #e2e8f0; padding-bottom:8px;">
+                <div style="font-weight:900; color:#0f172a; font-size:14px;">${p.ticker} <span style="font-size:12px; color:#64748b; font-weight:700;">${p.name}</span></div>
+                <input type="number" step="0.01" class="bulk-input" data-ticker="${p.ticker}" value="${p.currentPrice}" style="width:100px; padding:6px; border-radius:6px; border:1px solid #cbd5e1; font-weight:900; text-align:right;">
+            </div>
+        `).join('');
+
+        const { value: res } = await Swal.fire({
+            title: '批量修改時價',
+            html: `<div style="max-height:60vh; overflow-y:auto; padding:5px;">${html}</div>`,
+            showCancelButton: true,
+            confirmButtonText: '全部更新並記錄走勢',
+            confirmButtonColor: '#2563eb',
+            preConfirm: () => Array.from(document.querySelectorAll('.bulk-input')).map(i => ({ ticker: i.dataset.ticker, price: parseFloat(i.value) }))
+        });
+
+        if (res) {
+            Swal.fire({ title: '報價更新中...', didOpen: () => Swal.showLoading() });
+            const today = new Date().toISOString().split('T')[0];
+
+            res.forEach(item => {
+                if(marketPrices[item.ticker]) {
+                    marketPrices[item.ticker].price = item.price;
+                    let h = marketPrices[item.ticker].history;
+                    let last = h.length > 0 ? h[h.length - 1] : null;
+                    if (last && last.date === today) last.price = item.price;
+                    else h.push({ date: today, price: item.price });
+                }
+            });
+            
+            calculatePortfolio();
+            Swal.fire({icon: "success", title: "完成", text:"價格已更新至記憶體中！", timer: 1500});
+        }
     }
 </script>
 </body>
