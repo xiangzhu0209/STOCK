@@ -56,8 +56,8 @@
         .grid-header { display: flex; align-items: baseline; gap: 6px; margin-bottom: 12px; border-bottom: 2px solid #f1f5f9; padding-bottom: 8px; margin-top: 8px; }
         .grid-ticker { font-size: 26px; font-weight: 900; color: #0f172a; letter-spacing: -0.5px; }
         .grid-name { font-size: 13px; font-weight: 700; color: #64748b; }
-        .grid-row { display: flex; justify-content: space-between; font-size: 12px; color: #475569; margin-bottom: 4px; font-weight: 700; }
-        .grid-val { font-weight: 900; color: #0f172a; font-size: 14px; }
+        .grid-row { display: flex; justify-content: space-between; font-size: 12px; color: #475569; margin-bottom: 6px; font-weight: 700; align-items: center; }
+        .grid-val { font-weight: 900; color: #0f172a; font-size: 14px; display: flex; align-items: center;}
         
         .badge-sold { position: absolute; top: 12px; right: 12px; background: #94a3b8; color: white; font-size: 10px; padding: 3px 6px; border-radius: 4px; font-weight: bold; }
         .badge-watch { position: absolute; top: 12px; right: 12px; background: var(--watch); color: white; font-size: 10px; padding: 3px 6px; border-radius: 4px; font-weight: bold; }
@@ -437,10 +437,10 @@
                 let sellValue = tx.price * tx.quantity; let costBasis = avgCost * tx.quantity;
                 let netGain = sellValue - costBasis - (tx.fee || 0);
                 
-                tx.costBasis = costBasis; // 記錄賣出成本，供計算單日%
+                tx.costBasis = costBasis; 
                 tx.calculatedGain = netGain; 
                 p.realizedGain += netGain; 
-                p.realizedCostBasis += costBasis; // 記錄已實現的總成本
+                p.realizedCostBasis += costBasis; 
                 p.shares -= tx.quantity; 
                 p.totalCost -= costBasis; 
                 p.hasTrade = true;
@@ -464,7 +464,6 @@
             p.marketValue = p.shares * p.currentPrice;
             p.unrealizedGain = p.marketValue - p.totalCost;
             
-            // 算投資報酬率
             p.roiPercent = (p.shares > 0 && p.totalCost > 0) ? (p.unrealizedGain / p.totalCost) * 100 : 0;
             p.realizedRoiPercent = (p.realizedCostBasis > 0) ? (p.realizedGain / p.realizedCostBasis) * 100 : 0;
         });
@@ -491,12 +490,12 @@
             if (p.shares > 0) { dCost += p.totalCost; dMarket += p.marketValue; dUnrealized += p.unrealizedGain; }
             
             dRealized += p.realizedGain;
-            dRealizedCost += p.realizedCostBasis; // 用來算總表已實現%
+            dRealizedCost += p.realizedCostBasis; 
 
             p.history.forEach(tx => { 
                 if (tx.date === filterDate && (tx.type === 'sell' || tx.type === 'div')) {
                     dDailyPnl += (tx.calculatedGain || 0); 
-                    if(tx.type === 'sell') dDailyCost += (tx.costBasis || 0); // 記錄賣出單日成本
+                    if(tx.type === 'sell') dDailyCost += (tx.costBasis || 0); 
                 }
             });
 
@@ -510,17 +509,29 @@
             
             let contentHtml = '';
             if (p.status === 'watch') {
+                // 觀望：計算目標價與時價的距離
+                let watchDiff = p.currentPrice - p.watchPrice;
+                let watchPct = p.watchPrice > 0 ? (watchDiff / p.watchPrice) * 100 : 0;
+                let watchDiffStr = `<span class="${watchDiff>=0?'up-text':'down-text'}" style="font-size:11px; margin-left:6px;">${watchDiff>=0?'+':''}${watchDiff.toFixed(2)} (${watchPct.toFixed(2)}%)</span>`;
+
                 contentHtml = `
-                    <div class="grid-row"><span>目標價</span><span class="grid-val">$${p.watchPrice.toFixed(2)}</span></div>
-                    <div class="grid-row"><span>目前時價</span><span class="grid-val" style="color:var(--main-blue); font-size:16px;">$${p.currentPrice.toFixed(2)}</span></div>
+                    <div class="grid-row" style="margin-bottom:8px;"><span>目標價</span><span class="grid-val">$${p.watchPrice.toFixed(2)}</span></div>
+                    <div class="grid-row"><span>目前時價</span><span class="grid-val">$${p.currentPrice.toFixed(2)}${watchDiffStr}</span></div>
                 `;
             } else {
                 let gain = p.shares > 0 ? p.unrealizedGain : p.realizedGain;
                 let percentStr = p.shares > 0 ? ` (${p.roiPercent.toFixed(2)}%)` : ` (${p.realizedRoiPercent.toFixed(2)}%)`; 
                 
+                // 動態計算時價與均價的距離 (符合你的截圖需求)
+                let priceDiff = p.currentPrice - p.avgPrice;
+                let priceDiffPct = p.avgPrice > 0 ? (priceDiff / p.avgPrice) * 100 : 0;
+                let priceDiffStr = p.shares > 0 ? `<span class="${priceDiff>=0?'up-text':'down-text'}" style="font-size:11px; margin-left:6px;">${priceDiff>=0?'+':''}${priceDiff.toFixed(2)} (${priceDiffPct.toFixed(2)}%)</span>` : '';
+
                 contentHtml = `
                     <div class="grid-row"><span>持有股數</span><span class="grid-val">${p.shares.toLocaleString()} 股</span></div>
-                    <div class="grid-row"><span>均價/時價</span><span class="grid-val">$${p.avgPrice.toFixed(2)} / $${p.currentPrice.toFixed(2)}</span></div>
+                    <div class="grid-row"><span>均價成本</span><span class="grid-val">$${p.avgPrice.toFixed(2)}</span></div>
+                    <div class="grid-row"><span>目前時價</span><span class="grid-val">$${p.currentPrice.toFixed(2)}${priceDiffStr}</span></div>
+                    
                     <div style="border-top:1px solid #f1f5f9; margin-top:8px; padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
                         <span style="font-size:11px; color:#94a3b8; font-weight:700;">${p.shares>0 ? '未實現' : '總實現(淨)'}損益</span>
                         <span class="${gain>=0?'up-text':'down-text'}" style="font-size:14px; font-weight:900;">
@@ -586,15 +597,20 @@
                          <div><div class="stat-label">目標價</div><div class="stat-value">$${p.watchPrice.toFixed(2)}</div></div>`;
         } else if (p.shares > 0) {
             let unRealClass = 'stat-value ' + (p.unrealizedGain>=0?'up-text':'down-text');
+            // 同步修改詳細面板的時價顯示
+            let priceDiff = p.currentPrice - p.avgPrice;
+            let priceDiffPct = p.avgPrice > 0 ? (priceDiff / p.avgPrice) * 100 : 0;
+            let priceDiffStr = `<span class="${priceDiff>=0?'up-text':'down-text'}" style="font-size:12px; margin-left:6px;">${priceDiff>=0?'+':''}${priceDiff.toFixed(2)} (${priceDiffPct.toFixed(2)}%)</span>`;
+
             statsHtml = `<div><div class="stat-label">持有股數</div><div class="stat-value">${p.shares.toLocaleString()}</div></div>
                          <div><div class="stat-label">均價成本</div><div class="stat-value">$${p.avgPrice.toFixed(2)}</div></div>
-                         <div><div class="stat-label">目前報價</div><div class="stat-value">$${p.currentPrice.toFixed(2)}</div></div>
-                         <div><div class="stat-label">未實現損益</div><div class="${unRealClass}">${p.unrealizedGain>=0?'+':''}${Math.round(p.unrealizedGain).toLocaleString()} <span style="font-size:12px;">(${p.roiPercent.toFixed(2)}%)</span></div></div>`;
+                         <div style="grid-column: span 2;"><div class="stat-label">目前報價</div><div class="stat-value">$${p.currentPrice.toFixed(2)}${priceDiffStr}</div></div>
+                         <div style="grid-column: span 2;"><div class="stat-label">未實現損益</div><div class="${unRealClass}">${p.unrealizedGain>=0?'+':''}${Math.round(p.unrealizedGain).toLocaleString()} <span style="font-size:14px;">(${p.roiPercent.toFixed(2)}%)</span></div></div>`;
         } else {
              let realClass = 'stat-value ' + (p.realizedGain>=0?'up-text':'down-text');
              statsHtml = `<div><div class="stat-label">狀態</div><div class="stat-value" style="color:var(--main-dark);">已結清</div></div>
                          <div><div class="stat-label">結清總成本</div><div class="stat-value">$${Math.round(p.realizedCostBasis).toLocaleString()}</div></div>
-                         <div style="grid-column: span 2;"><div class="stat-label">總實現淨利 (含配息)</div><div class="${realClass}">${p.realizedGain>=0?'+':''}${Math.round(p.realizedGain).toLocaleString()} <span style="font-size:12px;">(${p.realizedRoiPercent.toFixed(2)}%)</span></div></div>`;
+                         <div style="grid-column: span 2;"><div class="stat-label">總實現淨利 (含配息)</div><div class="${realClass}">${p.realizedGain>=0?'+':''}${Math.round(p.realizedGain).toLocaleString()} <span style="font-size:14px;">(${p.realizedRoiPercent.toFixed(2)}%)</span></div></div>`;
         }
         document.getElementById('detStats').innerHTML = statsHtml;
 
