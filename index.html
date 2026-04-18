@@ -35,6 +35,7 @@
         .stat-value { font-size: 18px; font-weight: 900; }
         .up-text { color: var(--up); font-weight: 900; }
         .down-text { color: var(--down); font-weight: 900; }
+        .pct-text { font-size: 13px; font-weight: 700; opacity: 0.9; margin-left: 2px; }
 
         /* Header & Tabs */
         .header { background: white; padding: 15px 15px 5px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
@@ -334,25 +335,17 @@
 
     // --- 匯出 CSV 報表 ---
     function exportCSV() {
-        let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
-        csvContent += "系統ID,股票代號,股票名稱,交易類別,策略標籤,數量(股),單價/總額,交易成本(手續費/稅金),交易日期,自訂備註\r\n";
-        
+        let csvContent = "data:text/csv;charset=utf-8,\uFEFF系統ID,股票代號,股票名稱,交易類別,策略標籤,數量(股),單價/總額,交易成本(手續費/稅金),交易日期,自訂備註\r\n";
         let sortedTxs = [...allTransactions].sort((a,b) => new Date(b.date) - new Date(a.date));
-        
         sortedTxs.forEach(t => {
             let typeLabel = t.type === 'buy' ? '買進' : (t.type === 'sell' ? '賣出' : (t.type === 'div' ? '領息' : '觀望'));
             let stratLabel = t.strategy === 'day_trade' ? '當沖' : (t.strategy === 'short_term' ? '短期' : (t.strategy === 'long_term' ? '長期' : ''));
-            let row = `${t.id},${t.ticker},${t.name},${typeLabel},${stratLabel},${t.quantity},${t.price},${t.fee||0},${t.date},${t.memo||''}`;
-            csvContent += row + "\r\n";
+            csvContent += `${t.id},${t.ticker},${t.name},${typeLabel},${stratLabel},${t.quantity},${t.price},${t.fee||0},${t.date},${t.memo||''}\r\n`;
         });
-
-        var encodedUri = encodeURI(csvContent);
         var link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
+        link.setAttribute("href", encodeURI(csvContent));
         link.setAttribute("download", `StockPro_報表_${todayStr}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        document.body.appendChild(link); link.click(); document.body.removeChild(link);
     }
 
     // --- 介面邏輯 ---
@@ -360,7 +353,6 @@
         currentFilter = type;
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.getElementById(`filter-${type}`).classList.add('active');
-        
         const titles = { 'all': '全部', 'day_trade': '當沖(持倉)', 'short_term': '短期持有', 'long_term': '長期持有', 'watch': '觀望中', 'sold_std': '一般結清', 'sold_day': '當沖結清' };
         document.getElementById('dash-title').innerText = `📊 總覽 (${titles[type]})`;
         renderGrid();
@@ -372,11 +364,9 @@
         document.getElementById('typeSell').className = `type-btn sell ${type==='sell'?'active':''}`;
         document.getElementById('typeWatch').className = `type-btn watch ${type==='watch'?'active':''}`;
         document.getElementById('typeDiv').className = `type-btn div ${type==='div'?'active':''}`;
-        
         document.getElementById('qtyGroup').style.display = (type === 'watch' || type === 'div') ? 'none' : 'grid';
         document.getElementById('strategyGroup').style.display = type === 'buy' ? 'block' : 'none';
         document.getElementById('feeGroup').style.display = type === 'sell' ? 'block' : 'none';
-        
         if(type === 'watch') document.getElementById('priceLabel').innerText = '設定目標價';
         else if(type === 'div') document.getElementById('priceLabel').innerText = '領取總金額';
         else document.getElementById('priceLabel').innerText = '成交單價';
@@ -388,25 +378,17 @@
         document.getElementById('formModal').style.display = 'flex';
         
         if (editingTxId) {
-            document.getElementById('formTicker').value = prefill.ticker;
-            document.getElementById('formName').value = prefill.name;
-            document.getElementById('formQty').value = prefill.quantity;
-            document.getElementById('formPrice').value = prefill.price;
-            document.getElementById('formDate').value = prefill.date;
-            document.getElementById('formMemo').value = prefill.memo || "";
-            document.getElementById('formFee').value = prefill.fee || "";
-            document.getElementById('formUnit').value = 'share'; 
+            document.getElementById('formTicker').value = prefill.ticker; document.getElementById('formName').value = prefill.name;
+            document.getElementById('formQty').value = prefill.quantity; document.getElementById('formPrice').value = prefill.price;
+            document.getElementById('formDate').value = prefill.date; document.getElementById('formMemo').value = prefill.memo || "";
+            document.getElementById('formFee').value = prefill.fee || ""; document.getElementById('formUnit').value = 'share'; 
             if(prefill.strategy) document.getElementById('formStrategy').value = prefill.strategy;
             setTxType(prefill.type);
         } else {
-            document.getElementById('formDate').value = todayStr;
-            document.getElementById('formTicker').value = prefill ? prefill.ticker : '';
-            document.getElementById('formName').value = prefill ? prefill.name : '';
-            document.getElementById('formQty').value = '';
-            document.getElementById('formPrice').value = '';
-            document.getElementById('formFee').value = '';
-            document.getElementById('formMemo').value = '';
-            document.getElementById('formUnit').value = 'share';
+            document.getElementById('formDate').value = todayStr; document.getElementById('formTicker').value = prefill ? prefill.ticker : '';
+            document.getElementById('formName').value = prefill ? prefill.name : ''; document.getElementById('formQty').value = '';
+            document.getElementById('formPrice').value = ''; document.getElementById('formFee').value = '';
+            document.getElementById('formMemo').value = ''; document.getElementById('formUnit').value = 'share';
             setTxType('buy'); 
         }
     }
@@ -416,11 +398,9 @@
     function closeAnalysis() { document.getElementById('analysisModal').style.display = 'none'; }
 
     function saveTransaction() {
-        const ticker = document.getElementById('formTicker').value.trim();
-        const name = document.getElementById('formName').value.trim();
+        const ticker = document.getElementById('formTicker').value.trim(); const name = document.getElementById('formName').value.trim();
         let qty = (formTxType === 'watch' || formTxType === 'div') ? 0 : (parseInt(document.getElementById('formQty').value) || 0);
-        const price = parseFloat(document.getElementById('formPrice').value) || 0;
-        const fee = parseFloat(document.getElementById('formFee').value) || 0;
+        const price = parseFloat(document.getElementById('formPrice').value) || 0; const fee = parseFloat(document.getElementById('formFee').value) || 0;
         
         if (!ticker || !name || price <= 0 || ((formTxType !== 'watch' && formTxType !== 'div') && qty <= 0)) return Swal.fire("錯誤", "資料填寫不完整", "error");
         if ((formTxType !== 'watch' && formTxType !== 'div') && document.getElementById('formUnit').value === 'lot') qty = qty * 1000;
@@ -445,7 +425,7 @@
     function calculatePortfolio() {
         portfolio = {};
         allTransactions.forEach(tx => {
-            if (!portfolio[tx.ticker]) portfolio[tx.ticker] = { ticker: tx.ticker, name: tx.name, shares: 0, totalCost: 0, realizedGain: 0, history: [], hasTrade: false, watchPrice: 0, strategy: 'long_term' };
+            if (!portfolio[tx.ticker]) portfolio[tx.ticker] = { ticker: tx.ticker, name: tx.name, shares: 0, totalCost: 0, realizedGain: 0, realizedCostBasis: 0, history: [], hasTrade: false, watchPrice: 0, strategy: 'long_term' };
             let p = portfolio[tx.ticker];
             p.history.push(tx);
 
@@ -456,7 +436,14 @@
                 let avgCost = p.shares > 0 ? (p.totalCost / p.shares) : 0;
                 let sellValue = tx.price * tx.quantity; let costBasis = avgCost * tx.quantity;
                 let netGain = sellValue - costBasis - (tx.fee || 0);
-                tx.calculatedGain = netGain; p.realizedGain += netGain; p.shares -= tx.quantity; p.totalCost -= costBasis; p.hasTrade = true;
+                
+                tx.costBasis = costBasis; // 記錄賣出成本，供計算單日%
+                tx.calculatedGain = netGain; 
+                p.realizedGain += netGain; 
+                p.realizedCostBasis += costBasis; // 記錄已實現的總成本
+                p.shares -= tx.quantity; 
+                p.totalCost -= costBasis; 
+                p.hasTrade = true;
             } else if (tx.type === 'watch') {
                 p.watchPrice = tx.price; 
             } else if (tx.type === 'div') {
@@ -477,9 +464,9 @@
             p.marketValue = p.shares * p.currentPrice;
             p.unrealizedGain = p.marketValue - p.totalCost;
             
-            // 計算投報率 (ROI)
-            if (p.shares > 0 && p.totalCost > 0) p.roiPercent = (p.unrealizedGain / p.totalCost) * 100;
-            else p.roiPercent = 0;
+            // 算投資報酬率
+            p.roiPercent = (p.shares > 0 && p.totalCost > 0) ? (p.unrealizedGain / p.totalCost) * 100 : 0;
+            p.realizedRoiPercent = (p.realizedCostBasis > 0) ? (p.realizedGain / p.realizedCostBasis) * 100 : 0;
         });
 
         renderGrid(); 
@@ -492,7 +479,7 @@
         grid.innerHTML = "";
         document.getElementById('dash-date-label').innerText = filterDate === todayStr ? '今日' : filterDate.substring(5);
 
-        let dCost = 0, dMarket = 0, dUnrealized = 0, dRealized = 0, dDailyPnl = 0;
+        let dCost = 0, dMarket = 0, dUnrealized = 0, dRealized = 0, dRealizedCost = 0, dDailyPnl = 0, dDailyCost = 0;
 
         let displayItems = Object.values(portfolio).filter(p => {
             const matchSearch = p.ticker.includes(search) || p.name.includes(search);
@@ -502,8 +489,16 @@
 
         displayItems.forEach(p => {
             if (p.shares > 0) { dCost += p.totalCost; dMarket += p.marketValue; dUnrealized += p.unrealizedGain; }
+            
             dRealized += p.realizedGain;
-            p.history.forEach(tx => { if (tx.date === filterDate && (tx.type === 'sell' || tx.type === 'div')) dDailyPnl += (tx.calculatedGain || 0); });
+            dRealizedCost += p.realizedCostBasis; // 用來算總表已實現%
+
+            p.history.forEach(tx => { 
+                if (tx.date === filterDate && (tx.type === 'sell' || tx.type === 'div')) {
+                    dDailyPnl += (tx.calculatedGain || 0); 
+                    if(tx.type === 'sell') dDailyCost += (tx.costBasis || 0); // 記錄賣出單日成本
+                }
+            });
 
             let badge = '';
             if (p.status === 'sold_std') badge = '<div class="badge-sold">已結清</div>';
@@ -521,13 +516,16 @@
                 `;
             } else {
                 let gain = p.shares > 0 ? p.unrealizedGain : p.realizedGain;
-                let percentStr = p.shares > 0 ? ` (${p.roiPercent.toFixed(2)}%)` : ''; // 只在持倉時顯示 %
+                let percentStr = p.shares > 0 ? ` (${p.roiPercent.toFixed(2)}%)` : ` (${p.realizedRoiPercent.toFixed(2)}%)`; 
+                
                 contentHtml = `
                     <div class="grid-row"><span>持有股數</span><span class="grid-val">${p.shares.toLocaleString()} 股</span></div>
                     <div class="grid-row"><span>均價/時價</span><span class="grid-val">$${p.avgPrice.toFixed(2)} / $${p.currentPrice.toFixed(2)}</span></div>
                     <div style="border-top:1px solid #f1f5f9; margin-top:8px; padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
                         <span style="font-size:11px; color:#94a3b8; font-weight:700;">${p.shares>0 ? '未實現' : '總實現(淨)'}損益</span>
-                        <span class="${gain>=0?'up-text':'down-text'}" style="font-size:14px; font-weight:900;">${gain>=0?'+':''}${Math.round(gain).toLocaleString()}${percentStr}</span>
+                        <span class="${gain>=0?'up-text':'down-text'}" style="font-size:14px; font-weight:900;">
+                            ${gain>=0?'+':''}${Math.round(gain).toLocaleString()}<span class="pct-text">${percentStr}</span>
+                        </span>
                     </div>
                 `;
             }
@@ -541,70 +539,62 @@
             `;
         });
 
+        // 儀表板數值與 % 計算
         const fmt = val => '$' + Math.round(val).toLocaleString();
+        let dashUnrealizedPct = dCost > 0 ? (dUnrealized / dCost) * 100 : 0;
+        let dashRealizedPct = dRealizedCost > 0 ? (dRealized / dRealizedCost) * 100 : 0;
+        let dashDailyPct = dDailyCost > 0 ? (dDailyPnl / dDailyCost) * 100 : 0;
+
         document.getElementById('dash-cost').innerText = fmt(dCost);
         document.getElementById('dash-market').innerText = fmt(dMarket);
-        document.getElementById('dash-unrealized').innerText = (dUnrealized>=0?'+':'') + fmt(dUnrealized);
+        
+        document.getElementById('dash-unrealized').innerHTML = `${dUnrealized>=0?'+':''}${fmt(dUnrealized)} <span class="pct-text">(${dashUnrealizedPct.toFixed(2)}%)</span>`;
         document.getElementById('dash-unrealized').className = 'stat-value ' + (dUnrealized>=0?'up-text':'down-text');
-        document.getElementById('dash-realized').innerText = (dRealized>=0?'+':'') + fmt(dRealized);
+        
+        document.getElementById('dash-realized').innerHTML = `${dRealized>=0?'+':''}${fmt(dRealized)} <span class="pct-text" style="font-size:12px;">(${dashRealizedPct.toFixed(2)}%)</span>`;
         document.getElementById('dash-realized').style.color = dRealized >= 0 ? 'var(--up)' : 'var(--down)';
-        document.getElementById('dash-daily-pnl').innerText = (dDailyPnl>=0?'+':'') + fmt(dDailyPnl);
+        
+        let dailyPctStr = dDailyCost > 0 ? ` <span class="pct-text" style="font-size:14px;">(${dashDailyPct.toFixed(2)}%)</span>` : '';
+        document.getElementById('dash-daily-pnl').innerHTML = `${dDailyPnl>=0?'+':''}${fmt(dDailyPnl)}${dailyPctStr}`;
         document.getElementById('dash-daily-pnl').style.color = dDailyPnl >= 0 ? '#60a5fa' : '#f87171';
     }
 
     // --- 資產配置圓餅圖 ---
     function openAnalysis() {
         document.getElementById('analysisModal').style.display = 'flex';
-        
         let activeItems = Object.values(portfolio).filter(p => p.shares > 0);
-        if(activeItems.length === 0) {
-            document.getElementById('pieEmptyMsg').style.display = 'block';
-            if(pieChartObj) pieChartObj.destroy();
-            return;
-        }
-        
+        if(activeItems.length === 0) { document.getElementById('pieEmptyMsg').style.display = 'block'; if(pieChartObj) pieChartObj.destroy(); return; }
         document.getElementById('pieEmptyMsg').style.display = 'none';
-        
-        let labels = activeItems.map(p => `${p.ticker} ${p.name}`);
-        let data = activeItems.map(p => p.marketValue);
         
         const ctx = document.getElementById('assetPieChart').getContext('2d');
         if (pieChartObj) pieChartObj.destroy();
-        
         Chart.defaults.font.family = "'Inter', sans-serif";
         pieChartObj = new Chart(ctx, {
             type: 'doughnut',
-            data: { 
-                labels: labels, 
-                datasets: [{ 
-                    data: data, 
-                    backgroundColor: ['#2563eb', '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#64748b'],
-                    borderWidth: 2, borderColor: '#ffffff'
-                }] 
-            },
+            data: { labels: activeItems.map(p => `${p.ticker} ${p.name}`), datasets: [{ data: activeItems.map(p => p.marketValue), backgroundColor: ['#2563eb', '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#64748b'], borderWidth: 2, borderColor: '#ffffff' }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: {font: {size: 11, weight:'bold'}} } }, cutout: '65%' }
         });
     }
 
     function showDetail(ticker) {
-        const p = portfolio[ticker];
-        if (!p) return;
-
+        const p = portfolio[ticker]; if (!p) return;
         document.getElementById('detTicker').innerText = p.ticker; document.getElementById('detName').innerText = p.name;
         
         let statsHtml = '';
         if (p.status === 'watch') {
             statsHtml = `<div><div class="stat-label">狀態</div><div class="stat-value" style="color:var(--watch);">👀 觀望</div></div>
                          <div><div class="stat-label">目標價</div><div class="stat-value">$${p.watchPrice.toFixed(2)}</div></div>`;
-        } else {
-            let unRealStr = (p.unrealizedGain>=0?'+':'') + Math.round(p.unrealizedGain).toLocaleString();
+        } else if (p.shares > 0) {
             let unRealClass = 'stat-value ' + (p.unrealizedGain>=0?'up-text':'down-text');
-            statsHtml = `
-                <div><div class="stat-label">持有股數</div><div class="stat-value">${p.shares.toLocaleString()}</div></div>
-                <div><div class="stat-label">均價成本</div><div class="stat-value">$${p.avgPrice.toFixed(2)}</div></div>
-                <div><div class="stat-label">目前報價</div><div class="stat-value">$${p.currentPrice.toFixed(2)}</div></div>
-                <div><div class="stat-label">未實現損益</div><div class="${unRealClass}">${unRealStr} <span style="font-size:12px;">(${p.roiPercent.toFixed(1)}%)</span></div></div>
-            `;
+            statsHtml = `<div><div class="stat-label">持有股數</div><div class="stat-value">${p.shares.toLocaleString()}</div></div>
+                         <div><div class="stat-label">均價成本</div><div class="stat-value">$${p.avgPrice.toFixed(2)}</div></div>
+                         <div><div class="stat-label">目前報價</div><div class="stat-value">$${p.currentPrice.toFixed(2)}</div></div>
+                         <div><div class="stat-label">未實現損益</div><div class="${unRealClass}">${p.unrealizedGain>=0?'+':''}${Math.round(p.unrealizedGain).toLocaleString()} <span style="font-size:12px;">(${p.roiPercent.toFixed(2)}%)</span></div></div>`;
+        } else {
+             let realClass = 'stat-value ' + (p.realizedGain>=0?'up-text':'down-text');
+             statsHtml = `<div><div class="stat-label">狀態</div><div class="stat-value" style="color:var(--main-dark);">已結清</div></div>
+                         <div><div class="stat-label">結清總成本</div><div class="stat-value">$${Math.round(p.realizedCostBasis).toLocaleString()}</div></div>
+                         <div style="grid-column: span 2;"><div class="stat-label">總實現淨利 (含配息)</div><div class="${realClass}">${p.realizedGain>=0?'+':''}${Math.round(p.realizedGain).toLocaleString()} <span style="font-size:12px;">(${p.realizedRoiPercent.toFixed(2)}%)</span></div></div>`;
         }
         document.getElementById('detStats').innerHTML = statsHtml;
 
