@@ -12,18 +12,18 @@
     <style>
         :root { 
             /* 奶油拿鐵色系 */
-            --main-dark: #8c7a6b;   /* 拿鐵咖 (取代原本的深黑藍) */
-            --main-blue: #dcb38b;   /* 焦糖奶油 (取代原本的亮藍色) */
-            --up: #df7a7a;          /* 柔和珊瑚紅 (漲) */
-            --down: #79b49b;        /* 柔和鼠尾草綠 (跌) */
-            --watch: #e6a87c;       /* 蜜桃橘 */
-            --div: #e5b662;         /* 蜂蜜黃 */
-            --day: #b496c6;         /* 芋泥紫 */
-            --short: #84b2d1;       /* 莫蘭迪藍 */
-            --long: #a89f91;        /* 奶茶灰 */
-            --bg-light: #fdfbf7;    /* 鮮奶油白 (背景) */
-            --text-main: #5c4e46;   /* 深咖啡字體 */
-            --text-sub: #9e8e82;    /* 淺咖啡字體 */
+            --main-dark: #8c7a6b;   
+            --main-blue: #dcb38b;   
+            --up: #e26b6b;          /* 調整為更清晰飽和的胭脂紅 */
+            --down: #8bc4a9;        
+            --watch: #e6a87c;       
+            --div: #e5b662;         
+            --day: #b496c6;         
+            --short: #84b2d1;       
+            --long: #a89f91;        
+            --bg-light: #fdfbf7;    
+            --text-main: #5c4e46;   
+            --text-sub: #9e8e82;    
         }
         body { font-family: 'Inter', 'Noto Sans TC', sans-serif; background: var(--bg-light); margin: 0; padding-bottom: 120px; color: var(--text-main); }
         
@@ -63,8 +63,9 @@
         .grid-header { display: flex; align-items: baseline; gap: 6px; margin-bottom: 12px; border-bottom: 2px solid #f4efe9; padding-bottom: 8px; margin-top: 8px; }
         .grid-ticker { font-size: 26px; font-weight: 900; color: var(--text-main); letter-spacing: -0.5px; }
         .grid-name { font-size: 13px; font-weight: 700; color: var(--text-sub); }
-        .grid-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-sub); margin-bottom: 6px; font-weight: 700; align-items: center; }
-        .grid-val { font-weight: 900; color: var(--text-main); font-size: 14px; display: flex; align-items: center;}
+        
+        .grid-row { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-sub); margin-bottom: 6px; font-weight: 700; align-items: flex-start; }
+        .grid-val { font-weight: 900; color: var(--text-main); font-size: 14px; }
         
         .badge-sold { position: absolute; top: 12px; right: 12px; background: #cbbcc2; color: white; font-size: 10px; padding: 3px 6px; border-radius: 4px; font-weight: bold; }
         .badge-watch { position: absolute; top: 12px; right: 12px; background: var(--watch); color: white; font-size: 10px; padding: 3px 6px; border-radius: 4px; font-weight: bold; }
@@ -82,8 +83,8 @@
         
         .tx-list { display: flex; flex-direction: column; gap: 10px; margin-top: 15px; }
         .tx-item { background: #fdfbf7; border: 1px solid #f4efe9; border-radius: 10px; padding: 12px; display: flex; justify-content: space-between; align-items: center; }
-        .tx-type.buy { color: var(--up); background: rgba(223, 122, 122, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 900; }
-        .tx-type.sell { color: var(--down); background: rgba(121, 180, 155, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 900; }
+        .tx-type.buy { color: var(--up); background: rgba(226, 107, 107, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 900; }
+        .tx-type.sell { color: var(--down); background: rgba(139, 196, 169, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 900; }
         .tx-type.watch { color: var(--watch); background: rgba(230, 168, 124, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 900; }
         .tx-type.div { color: var(--div); background: rgba(229, 182, 98, 0.1); padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 900; }
 
@@ -261,7 +262,12 @@
             <div class="input-group"><label>日期</label><input type="date" class="input-control" id="formDate"></div>
         </div>
         
-        <div class="input-group" id="feeGroup" style="display:none; background:rgba(223, 122, 122, 0.1); padding:10px; border-radius:10px;">
+        <div class="input-group" id="watchCurrentPriceGroup" style="display:none; background:rgba(229, 182, 98, 0.1); padding:10px; border-radius:10px;">
+            <label style="color:#b28431;">目前市場時價 (供系統追蹤)</label>
+            <input type="number" step="0.01" class="input-control" id="formCurrentPrice" placeholder="輸入現在股價..." style="border-color:var(--div); background:white;">
+        </div>
+        
+        <div class="input-group" id="feeGroup" style="display:none; background:rgba(226, 107, 107, 0.1); padding:10px; border-radius:10px;">
             <label style="color:var(--up);">交易成本 (手續費+稅金)</label>
             <input type="number" step="1" class="input-control" id="formFee" placeholder="輸入總金額 (如: 150)" style="border-color:#eebfbf;">
         </div>
@@ -362,8 +368,13 @@
         document.getElementById('typeBuy').className = `type-btn buy ${type==='buy'?'active':''}`; document.getElementById('typeSell').className = `type-btn sell ${type==='sell'?'active':''}`;
         document.getElementById('typeWatch').className = `type-btn watch ${type==='watch'?'active':''}`; document.getElementById('typeDiv').className = `type-btn div ${type==='div'?'active':''}`;
         document.getElementById('qtyGroup').style.display = (type === 'watch' || type === 'div') ? 'none' : 'grid';
-        document.getElementById('strategyGroup').style.display = type === 'buy' ? 'block' : 'none'; document.getElementById('feeGroup').style.display = type === 'sell' ? 'block' : 'none';
-        if(type === 'watch') document.getElementById('priceLabel').innerText = '設定目標價'; else if(type === 'div') document.getElementById('priceLabel').innerText = '領取總金額'; else document.getElementById('priceLabel').innerText = '成交單價';
+        document.getElementById('strategyGroup').style.display = type === 'buy' ? 'block' : 'none'; 
+        document.getElementById('feeGroup').style.display = type === 'sell' ? 'block' : 'none';
+        document.getElementById('watchCurrentPriceGroup').style.display = type === 'watch' ? 'block' : 'none';
+        
+        if(type === 'watch') document.getElementById('priceLabel').innerText = '設定目標價'; 
+        else if(type === 'div') document.getElementById('priceLabel').innerText = '領取總金額'; 
+        else document.getElementById('priceLabel').innerText = '成交單價';
     }
 
     function openForm(prefill = null) {
@@ -375,12 +386,14 @@
             document.getElementById('formQty').value = prefill.quantity; document.getElementById('formPrice').value = prefill.price;
             document.getElementById('formDate').value = prefill.date; document.getElementById('formMemo').value = prefill.memo || "";
             document.getElementById('formFee').value = prefill.fee || ""; document.getElementById('formUnit').value = 'share'; 
+            document.getElementById('formCurrentPrice').value = marketPrices[prefill.ticker] ? marketPrices[prefill.ticker].price : '';
             if(prefill.strategy) document.getElementById('formStrategy').value = prefill.strategy; setTxType(prefill.type);
         } else {
             document.getElementById('formDate').value = todayStr; document.getElementById('formTicker').value = prefill ? prefill.ticker : '';
             document.getElementById('formName').value = prefill ? prefill.name : ''; document.getElementById('formQty').value = '';
             document.getElementById('formPrice').value = ''; document.getElementById('formFee').value = '';
-            document.getElementById('formMemo').value = ''; document.getElementById('formUnit').value = 'share'; setTxType('buy'); 
+            document.getElementById('formMemo').value = ''; document.getElementById('formUnit').value = 'share'; 
+            document.getElementById('formCurrentPrice').value = ''; setTxType('buy'); 
         }
     }
 
@@ -401,6 +414,18 @@
 
         if (editingTxId) { const index = allTransactions.findIndex(t => t.id === editingTxId); if(index !== -1) allTransactions[index] = txData; } 
         else { allTransactions.push(txData); if (!marketPrices[ticker]) marketPrices[ticker] = { price: price, history: [{ date: txData.date, price: price }] }; }
+
+        // 處理觀望時一併輸入的目前時價
+        if (formTxType === 'watch') {
+            const currentP = parseFloat(document.getElementById('formCurrentPrice').value);
+            if (currentP > 0) {
+                if (!marketPrices[ticker]) marketPrices[ticker] = { price: currentP, history: [] };
+                marketPrices[ticker].price = currentP;
+                let h = marketPrices[ticker].history;
+                let last = h.length > 0 ? h[h.length - 1] : null;
+                if (last && last.date === txData.date) last.price = currentP; else h.push({ date: txData.date, price: currentP });
+            }
+        }
 
         Swal.fire({icon: "success", title: "儲存成功", timer: 1000, showConfirmButton: false});
         closeForm(); calculatePortfolio(); if (document.getElementById('detailModal').style.display === 'flex') showDetail(ticker); 
@@ -469,19 +494,33 @@
             let contentHtml = '';
             if (p.status === 'watch') {
                 let watchDiff = p.currentPrice - p.watchPrice; let watchPct = p.watchPrice > 0 ? (Math.abs(watchDiff) / p.watchPrice) * 100 : 0;
-                let watchDiffStr = `<span class="${watchDiff>=0?'up-text':'down-text'}" style="font-size:12px; margin-left:6px; white-space:nowrap;">${watchDiff>=0?'▲':'▼'}${' '}${Math.abs(watchDiff).toFixed(2)} (${watchPct.toFixed(2)}%)</span>`;
+                // 改為直列排版 (區塊顯示) 避免擠壓
+                let watchDiffStr = `<div class="${watchDiff>=0?'up-text':'down-text'}" style="font-size:11px; margin-top:2px; font-weight:900;">${watchDiff>=0?'▲':'▼'}${' '}${Math.abs(watchDiff).toFixed(2)} (${watchPct.toFixed(2)}%)</div>`;
                 contentHtml = `
                     <div class="grid-row" style="margin-bottom:8px;"><span>目標價</span><span class="grid-val">$${p.watchPrice.toFixed(2)}</span></div>
-                    <div class="grid-row"><span>目前時價</span><span class="grid-val" style="display:flex; align-items:center;">$${p.currentPrice.toFixed(2)}${watchDiffStr}</span></div>
+                    <div class="grid-row" style="align-items:flex-start;">
+                        <span style="margin-top:2px; padding-top:1px; flex-shrink:0;">目前時價</span>
+                        <div class="grid-val" style="display:flex; flex-direction:column; align-items:flex-end;">
+                            <span>$${p.currentPrice.toFixed(2)}</span>
+                            ${watchDiffStr}
+                        </div>
+                    </div>
                 `;
             } else if (p.shares > 0) {
                 let gain = p.unrealizedGain; let percentStr = ` (${p.roiPercent.toFixed(2)}%)`; 
                 let priceDiff = p.currentPrice - p.avgPrice; let priceDiffPct = p.avgPrice > 0 ? (Math.abs(priceDiff) / p.avgPrice) * 100 : 0;
-                let priceDiffStr = `<span class="${priceDiff>=0?'up-text':'down-text'}" style="font-size:12px; margin-left:6px; white-space:nowrap;">${priceDiff>=0?'▲':'▼'}${' '}${Math.abs(priceDiff).toFixed(2)} (${priceDiffPct.toFixed(2)}%)</span>`;
+                // 改為直列排版 (區塊顯示) 避免擠壓
+                let priceDiffStr = `<div class="${priceDiff>=0?'up-text':'down-text'}" style="font-size:11px; margin-top:2px; font-weight:900;">${priceDiff>=0?'▲':'▼'}${' '}${Math.abs(priceDiff).toFixed(2)} (${priceDiffPct.toFixed(2)}%)</div>`;
                 contentHtml = `
                     <div class="grid-row"><span>持有股數</span><span class="grid-val">${p.shares.toLocaleString()} 股</span></div>
                     <div class="grid-row"><span>均價成本</span><span class="grid-val">$${p.avgPrice.toFixed(2)}</span></div>
-                    <div class="grid-row"><span>目前時價</span><span class="grid-val" style="display:flex; align-items:center;">$${p.currentPrice.toFixed(2)}${priceDiffStr}</span></div>
+                    <div class="grid-row" style="align-items:flex-start;">
+                        <span style="margin-top:2px; padding-top:1px; flex-shrink:0;">目前時價</span>
+                        <div class="grid-val" style="display:flex; flex-direction:column; align-items:flex-end;">
+                            <span>$${p.currentPrice.toFixed(2)}</span>
+                            ${priceDiffStr}
+                        </div>
+                    </div>
                     <div style="border-top:1px solid var(--bg-light); margin-top:8px; padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
                         <span style="font-size:11px; color:var(--text-sub); font-weight:700;">未實現損益</span>
                         <span class="${gain>=0?'up-text':'down-text'}" style="font-size:14px; font-weight:900;">${gain>=0?'+':''}${Math.round(gain).toLocaleString()}<span class="pct-text">${percentStr}</span></span>
@@ -516,7 +555,7 @@
         document.getElementById('dash-unrealized').innerHTML = `${dUnrealized>=0?'+':''}${fmt(dUnrealized)} <span class="pct-text">(${dashUnrealizedPct.toFixed(2)}%)</span>`; document.getElementById('dash-unrealized').className = 'stat-value ' + (dUnrealized>=0?'up-text':'down-text');
         document.getElementById('dash-realized').innerHTML = `${dRealized>=0?'+':''}${fmt(dRealized)} <span class="pct-text" style="font-size:12px;">(${dashRealizedPct.toFixed(2)}%)</span>`; document.getElementById('dash-realized').style.color = dRealized >= 0 ? 'var(--up)' : 'var(--down)';
         let dailyPctStr = dDailyCost > 0 ? ` <span class="pct-text" style="font-size:14px;">(${dashDailyPct.toFixed(2)}%)</span>` : '';
-        document.getElementById('dash-daily-pnl').innerHTML = `${dDailyPnl>=0?'+':''}${fmt(dDailyPnl)}${dailyPctStr}`; document.getElementById('dash-daily-pnl').style.color = dDailyPnl >= 0 ? '#df7a7a' : '#79b49b';
+        document.getElementById('dash-daily-pnl').innerHTML = `${dDailyPnl>=0?'+':''}${fmt(dDailyPnl)}${dailyPctStr}`; document.getElementById('dash-daily-pnl').style.color = dDailyPnl >= 0 ? 'var(--up)' : 'var(--down)';
     }
 
     function openAnalysis() {
@@ -526,7 +565,7 @@
         if (pieChartObj) pieChartObj.destroy(); Chart.defaults.font.family = "'Inter', sans-serif";
         pieChartObj = new Chart(ctx, {
             type: 'doughnut',
-            data: { labels: activeItems.map(p => `${p.ticker} ${p.name}`), datasets: [{ data: activeItems.map(p => p.marketValue), backgroundColor: ['#dcb38b', '#b496c6', '#84b2d1', '#79b49b', '#e6a87c', '#df7a7a', '#8c7a6b'], borderWidth: 2, borderColor: '#ffffff' }] },
+            data: { labels: activeItems.map(p => `${p.ticker} ${p.name}`), datasets: [{ data: activeItems.map(p => p.marketValue), backgroundColor: ['#dcb38b', '#b496c6', '#84b2d1', '#8bc4a9', '#e6a87c', '#e26b6b', '#8c7a6b'], borderWidth: 2, borderColor: '#ffffff' }] },
             options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: {font: {size: 11, weight:'bold'}, color: '#5c4e46'} } }, cutout: '65%' }
         });
     }
@@ -557,7 +596,7 @@
         document.getElementById('detStats').innerHTML = statsHtml;
 
         window.deleteTx = async function(id) {
-            const res = await Swal.fire({ title: '刪除紀錄？', icon: 'warning', showCancelButton: true, confirmButtonColor: '#df7a7a' });
+            const res = await Swal.fire({ title: '刪除紀錄？', icon: 'warning', showCancelButton: true, confirmButtonColor: '#e26b6b' });
             if(res.isConfirmed) { allTransactions = allTransactions.filter(t => t.id !== id); calculatePortfolio(); showDetail(ticker); }
         };
 
@@ -610,7 +649,7 @@
         Chart.defaults.color = '#9e8e82';
         
         const dataLength = filtered.length;
-        const pointColors = filtered.map((_, i) => i === dataLength - 1 ? '#df7a7a' : '#dcb38b');
+        const pointColors = filtered.map((_, i) => i === dataLength - 1 ? '#e26b6b' : '#dcb38b');
         const pointRadii = filtered.map((_, i) => i === dataLength - 1 ? 5 : (timeframe==='year' ? 0 : 3));
 
         currentChartObj = new Chart(ctx, {
@@ -632,15 +671,10 @@
         });
     }
 
-    // --- 修改點：只抓取當前分類的股票進行批量更新 ---
     async function openQuickPrice() {
         let activeTickers = Object.values(portfolio).filter(p => {
-            // 如果在「全部」，就顯示有持股或觀望的；如果在特定分類，就只顯示該分類的
-            if (currentFilter === 'all') {
-                return p.shares > 0 || p.status === 'watch';
-            } else {
-                return p.status === currentFilter;
-            }
+            if (currentFilter === 'all') return p.shares > 0 || p.status === 'watch';
+            else return p.status === currentFilter;
         });
 
         if (activeTickers.length === 0) return Swal.fire({title: "提示", text: "目前的分類中沒有可以更新的股票喔！", icon: "info", confirmButtonColor: '#dcb38b'});
