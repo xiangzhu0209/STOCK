@@ -264,6 +264,14 @@
 </div>
 
 <script>
+    // --- 修正時區問題，獲取本地時間 ---
+    function getLocalDateStr(d) {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+
     let currentPin = '';
     function pressKey(key) {
         if (key === 'back') currentPin = currentPin.slice(0, -1);
@@ -283,7 +291,8 @@
         }
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    // 使用本地時間取代 toISOString() 解決跨日半夜時區問題
+    const todayStr = getLocalDateStr(new Date());
     document.getElementById('filterDate').value = todayStr;
 
     let allTransactions = [
@@ -302,7 +311,7 @@
         for (let i = 365; i >= 0; i--) {
             let temp = new Date(d); temp.setDate(temp.getDate() - i);
             cur = cur * (1 + (Math.random() * volatility * 2 - volatility));
-            history.push({ date: temp.toISOString().split('T')[0], price: parseFloat(cur.toFixed(2)) });
+            history.push({ date: getLocalDateStr(temp), price: parseFloat(cur.toFixed(2)) });
         }
         return history;
     }
@@ -595,7 +604,6 @@
         if (currentChartObj) currentChartObj.destroy();
         Chart.defaults.font.family = "'Inter', sans-serif";
         
-        // 抓出資料長度，用來特別標示最後一個點（最新價格）
         const dataLength = filtered.length;
         const pointColors = filtered.map((_, i) => i === dataLength - 1 ? '#ef4444' : '#2563eb');
         const pointRadii = filtered.map((_, i) => i === dataLength - 1 ? 5 : (timeframe==='year' ? 0 : 3));
@@ -609,7 +617,7 @@
                     borderColor: '#2563eb', 
                     backgroundColor: 'rgba(37,99,235, 0.1)', 
                     fill: true, 
-                    tension: 0, // 改為 0 (直線)，讓價格跳動更銳利明顯
+                    tension: 0,
                     pointRadius: pointRadii,
                     pointBackgroundColor: pointColors,
                     pointBorderColor: pointColors
