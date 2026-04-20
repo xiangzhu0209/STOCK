@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stock Pro 奶油特仕版 (雲端版)</title>
+    <title>Stock Pro 莫蘭迪特仕版 (雲端版)</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -115,7 +115,7 @@
 
 <div id="loginScreen">
     <div style="font-size: 28px; font-weight: 900; margin-bottom: 10px; color: white;">Stock Pro</div>
-    <div style="font-size: 12px; font-weight: bold; margin-bottom: 30px; color: #eaddcf;">(奶油特仕版 - 雲端連線)</div>
+    <div style="font-size: 12px; font-weight: bold; margin-bottom: 30px; color: #eaddcf;">(莫蘭迪特仕版 - 雲端連線)</div>
     <div class="pin-dots">
         <span class="dot" id="dot-0"></span><span class="dot" id="dot-1"></span>
         <span class="dot" id="dot-2"></span><span class="dot" id="dot-3"></span>
@@ -157,11 +157,16 @@
         <div class="search-bar">🔍 <input type="text" id="searchInput" placeholder="搜尋代號或名稱..." oninput="renderGrid()"></div>
         <input type="date" id="filterDate" class="date-picker" onchange="renderGrid()">
     </div>
+    
+    <input type="file" id="htmlUploader" accept=".html" style="display:none;" onchange="handleHtmlUpload(event)">
+    
     <div class="tab-group" style="padding-bottom: 5px;">
         <button class="tab-btn-action" style="background:var(--main-blue); color:white;" onclick="openQuickPrice()">✏️ 更新目前分類時價</button>
+        <button class="tab-btn-action" style="background:#b496c6; color:white;" onclick="document.getElementById('htmlUploader').click()">📤 匯入 Goodinfo</button>
         <button class="tab-btn-action" onclick="openAnalysis()">📊 資產分析</button>
         <button class="tab-btn-action" onclick="exportCSV()">📥 匯出報表</button>
     </div>
+    
     <div class="tab-group">
         <button class="tab-btn active" id="filter-all" onclick="setFilter('all')">全部</button>
         <button class="tab-btn" id="filter-day_trade" onclick="setFilter('day_trade')">當沖(持)</button>
@@ -326,7 +331,98 @@
     document.getElementById('filterDate').value = todayStr;
 
     // ==========================================
-    // Firebase 連線 (已帶入你的專屬金鑰)
+    // 全新功能：HTML 歷史資料智慧解析引擎
+    // ==========================================
+    function handleHtmlUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        Swal.fire({ title: '🔍 讀取解析中...', text: '正在將檔案轉換為您的專屬線圖', didOpen: () => Swal.showLoading() });
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const text = e.target.result;
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(text, 'text/html');
+
+                // 1. 智慧尋找股票代號
+                let ticker = '';
+                const caption = doc.querySelector('caption');
+                if (caption && caption.innerText) {
+                    const match = caption.innerText.match(/(\d{4,5})/);
+                    if (match) ticker = match[1];
+                }
+                if (!ticker) {
+                    const title = doc.querySelector('title');
+                    if (title && title.innerText) {
+                        const match = title.innerText.match(/(\d{4,5})/);
+                        if (match) ticker = match[1];
+                    }
+                }
+
+                if (!ticker) {
+                    Swal.fire({icon: 'error', title: '錯誤', text: '無法從檔案標題中辨識出股票代號', confirmButtonColor: '#dcb38b'});
+                    event.target.value = ''; return;
+                }
+
+                // 2. 爬取所有日期與收盤價
+                const rows = doc.querySelectorAll('tr');
+                let newHistory = [];
+
+                rows.forEach(row => {
+                    const cells = row.querySelectorAll('td');
+                    if (cells.length >= 5) {
+                        let dateText = cells[0].innerText.trim();
+                        // 判斷是否為 Goodinfo 的日期格式，例如 '26/04/20
+                        if (/^'\d{2}\/\d{2}\/\d{2}$/.test(dateText)) {
+                            let parts = dateText.replace("'", "").split('/');
+                            let formattedDate = `20${parts[0]}-${parts[1]}-${parts[2]}`;
+                            let price = parseFloat(cells[4].innerText.trim());
+                            
+                            if (!isNaN(price)) {
+                                newHistory.push({ date: formattedDate, price: price });
+                            }
+                        }
+                    }
+                });
+
+                if (newHistory.length === 0) {
+                     Swal.fire({icon: 'error', title: '錯誤', text: '在此檔案中找不到符合格式的歷史報價', confirmButtonColor: '#dcb38b'});
+                     event.target.value = ''; return;
+                }
+
+                // 照日期從小到大排序 (確保線圖是往右畫)
+                newHistory.sort((a,b) => new Date(a.date) - new Date(b.date));
+
+                // 3. 寫入本地資料庫並重新繪圖
+                if (!marketPrices[ticker]) {
+                    marketPrices[ticker] = { price: newHistory[newHistory.length-1].price, history: newHistory };
+                } else {
+                    marketPrices[ticker].history = newHistory;
+                    marketPrices[ticker].price = newHistory[newHistory.length-1].price;
+                }
+
+                calculatePortfolio(); // 重新計算全系統資料
+
+                // 如果畫面正好停在這一檔股票的詳細視窗，就馬上刷新線圖給你看
+                if (currentChartTicker === ticker && document.getElementById('detailModal').style.display === 'flex') {
+                    updateChart('year'); 
+                }
+
+                Swal.fire({icon: 'success', title: '匯入成功！', text: `已成功載入 ${ticker} 共 ${newHistory.length} 筆真實報價資料，圖表已更新。`, confirmButtonColor: '#b496c6'});
+                event.target.value = ''; // 清空上傳器狀態，方便下次選同一個檔案
+
+            } catch(err) {
+                console.error(err);
+                Swal.fire({icon: 'error', title: '解析失敗', text: '請確認您上傳的是 Goodinfo 台灣股市資訊網下載的 HTML 檔', confirmButtonColor: '#dcb38b'});
+            }
+        };
+        reader.readAsText(file);
+    }
+
+    // ==========================================
+    // Firebase 連線 (已帶入專屬金鑰)
     // ==========================================
     const firebaseConfig = {
         apiKey: "AIzaSyBQZ6pPmXqgGVj3rtNKTx41gogyQUmD41E",
@@ -350,6 +446,7 @@
     let pieChartObj = null;
     let editingTxId = null;
 
+    // 生成歷史模擬資料以補齊天數
     function generateMockHistory(basePrice, volatility) {
         let history = []; let cur = basePrice; let d = new Date();
         for (let i = 365; i >= 0; i--) {
@@ -360,10 +457,25 @@
         return history;
     }
 
+    // 整合你之前上傳的 Goodinfo HTML 真實歷史數據作為預設展示
+    let hist2367 = generateMockHistory(72, 0.015);
+    hist2367.push({date: "2026-04-14", price: 72});
+    hist2367.push({date: "2026-04-15", price: 72.1});
+    hist2367.push({date: "2026-04-16", price: 70.4});
+    hist2367.push({date: "2026-04-17", price: 68.5});
+    hist2367.push({date: "2026-04-20", price: 65.6});
+
+    let hist2337 = generateMockHistory(155.5, 0.015);
+    hist2337.push({date: "2026-04-14", price: 155.5});
+    hist2337.push({date: "2026-04-15", price: 142});
+    hist2337.push({date: "2026-04-16", price: 139});
+    hist2337.push({date: "2026-04-17", price: 131});
+    hist2337.push({date: "2026-04-20", price: 120.5});
+
     let marketPrices = {
         "6770": { price: 53.00, history: generateMockHistory(53.00, 0.015) },
-        "2367": { price: 72.10, history: generateMockHistory(72.10, 0.02) },
-        "2337": { price: 138.50, history: generateMockHistory(138.50, 0.015) },
+        "2367": { price: 65.6, history: hist2367 },
+        "2337": { price: 120.5, history: hist2337 },
         "5328": { price: 28.50, history: generateMockHistory(28.50, 0.02) }
     };
     Object.keys(marketPrices).forEach(k => { marketPrices[k].history[marketPrices[k].history.length-1].price = marketPrices[k].price; });
@@ -447,7 +559,6 @@
         document.getElementById('qtyGroup').style.display = (type === 'watch' || type === 'div') ? 'none' : 'grid';
         document.getElementById('strategyGroup').style.display = type === 'buy' ? 'block' : 'none'; 
         
-        // 更新：買進或賣出時，都顯示手續費輸入框
         document.getElementById('feeGroup').style.display = (type === 'buy' || type === 'sell') ? 'block' : 'none';
         document.getElementById('watchCurrentPriceGroup').style.display = type === 'watch' ? 'block' : 'none';
         
@@ -456,9 +567,23 @@
         else document.getElementById('priceLabel').innerText = '成交單價';
     }
 
+    // 表單清空機制：確保輸入區塊會回歸空白
+    function clearFormFields() {
+        document.getElementById('formTicker').value = ''; 
+        document.getElementById('formName').value = '';
+        document.getElementById('formQty').value = '';
+        document.getElementById('formPrice').value = ''; 
+        document.getElementById('formFee').value = '';
+        document.getElementById('formMemo').value = ''; 
+        document.getElementById('formCurrentPrice').value = '';
+        document.getElementById('formDate').value = todayStr;
+        document.getElementById('formUnit').value = 'share';
+    }
+
     function openForm(prefill = null) {
         editingTxId = prefill && prefill.id ? prefill.id : null;
-        document.getElementById('formTitle').innerText = editingTxId ? "✏️ 修改紀錄" : "➕ 新增紀錄"; document.getElementById('formModal').style.display = 'flex';
+        document.getElementById('formTitle').innerText = editingTxId ? "✏️ 修改紀錄" : "➕ 新增紀錄"; 
+        document.getElementById('formModal').style.display = 'flex';
         
         if (editingTxId) {
             document.getElementById('formTicker').value = prefill.ticker; document.getElementById('formName').value = prefill.name;
@@ -468,15 +593,20 @@
             document.getElementById('formCurrentPrice').value = marketPrices[prefill.ticker] ? marketPrices[prefill.ticker].price : '';
             if(prefill.strategy) document.getElementById('formStrategy').value = prefill.strategy; setTxType(prefill.type);
         } else {
-            document.getElementById('formDate').value = todayStr; document.getElementById('formTicker').value = prefill ? prefill.ticker : '';
-            document.getElementById('formName').value = prefill ? prefill.name : ''; document.getElementById('formQty').value = '';
-            document.getElementById('formPrice').value = ''; document.getElementById('formFee').value = '';
-            document.getElementById('formMemo').value = ''; document.getElementById('formUnit').value = 'share'; 
-            document.getElementById('formCurrentPrice').value = ''; setTxType('buy'); 
+            clearFormFields();
+            if (prefill) {
+                document.getElementById('formTicker').value = prefill.ticker || '';
+                document.getElementById('formName').value = prefill.name || '';
+            }
+            setTxType('buy'); 
         }
     }
 
-    function closeForm() { document.getElementById('formModal').style.display = 'none'; editingTxId = null; }
+    function closeForm() { 
+        document.getElementById('formModal').style.display = 'none'; 
+        editingTxId = null; 
+    }
+    
     function closeDetail() { document.getElementById('detailModal').style.display = 'none'; }
     function closeAnalysis() { document.getElementById('analysisModal').style.display = 'none'; }
 
@@ -491,13 +621,13 @@
         const txData = { id: editingTxId || ('tx_' + Date.now()), ticker, name, price, quantity: qty, type: formTxType, date: document.getElementById('formDate').value, memo: document.getElementById('formMemo').value };
         if(formTxType === 'buy') txData.strategy = document.getElementById('formStrategy').value; 
         
-        // 更新：買進與賣出都要把 fee 存進去
         if(formTxType === 'buy' || formTxType === 'sell') txData.fee = fee;
 
         if (isFirebaseConnected) {
             txRef.child(txData.id).set(txData).then(() => {
                 Swal.fire({icon: "success", title: "儲存成功 (雲端)", timer: 1000, showConfirmButton: false});
                 closeForm();
+                clearFormFields();
                 if (document.getElementById('detailModal').style.display === 'flex') setTimeout(() => showDetail(ticker), 300); 
             });
             if (formTxType === 'watch') {
@@ -518,7 +648,10 @@
             }
             
             Swal.fire({icon: "success", title: "儲存成功 (本機)", timer: 1000, showConfirmButton: false});
-            closeForm(); calculatePortfolio(); if (document.getElementById('detailModal').style.display === 'flex') showDetail(ticker); 
+            closeForm(); 
+            clearFormFields();
+            calculatePortfolio(); 
+            if (document.getElementById('detailModal').style.display === 'flex') showDetail(ticker); 
         }
     }
 
@@ -530,7 +663,6 @@
 
             if (tx.type === 'buy') {
                 p.shares += tx.quantity; 
-                // 更新：買進成本加上手續費
                 p.totalCost += (tx.price * tx.quantity) + (tx.fee || 0); 
                 p.hasTrade = true; 
                 if(tx.strategy) p.strategy = tx.strategy; 
