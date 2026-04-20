@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stock Pro 莫蘭迪特仕版 (雲端版)</title>
+    <title> 股票交易紀錄APP </title>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -46,13 +46,16 @@
         .up-text { color: var(--up); font-weight: 900; }
         .down-text { color: var(--down); font-weight: 900; }
         .pct-text { font-size: 13px; font-weight: 700; opacity: 0.9; margin-left: 2px; }
+        
+        /* 區間日期選擇器專屬樣式 */
+        .date-picker-small { background: rgba(255,255,255,0.15); border: 1px solid rgba(220,179,139,0.4); border-radius: 6px; padding: 4px 6px; font-weight: 700; color: white; outline: none; font-family: inherit; font-size: 11px; }
+        .date-picker-small::-webkit-calendar-picker-indicator { filter: invert(1); opacity: 0.8; cursor: pointer; }
 
         .header { background: white; padding: 15px 15px 5px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 15px rgba(140,122,107,0.08); border-bottom: 1px solid #f4efe9; }
         .search-area { display: flex; gap: 8px; margin-bottom: 10px; }
         .search-bar { background: #f4efe9; border-radius: 10px; padding: 10px; display: flex; align-items: center; flex: 1; }
         .search-bar input { border: none; background: transparent; outline: none; width: 100%; font-size: 15px; font-weight: bold; color: var(--text-main); }
         .search-bar input::placeholder { color: var(--text-sub); }
-        .date-picker { background: #f4efe9; border: none; border-radius: 10px; padding: 0 10px; font-weight: 900; color: var(--main-dark); outline: none; font-family: inherit; }
         
         .tab-group { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 10px; -webkit-overflow-scrolling: touch; }
         .tab-group::-webkit-scrollbar { display: none; } 
@@ -139,24 +142,30 @@
             <div><div class="stat-label">投入本金</div><div class="stat-value" id="dash-cost">$0</div></div>
             <div><div class="stat-label">目前市值</div><div class="stat-value" id="dash-market">$0</div></div>
             <div><div class="stat-label">未實現損益</div><div class="stat-value" id="dash-unrealized">$0</div></div>
-            <div><div class="stat-label">已實現淨利</div><div class="stat-value" id="dash-realized">$0</div></div>
+            <div><div class="stat-label">總實現淨利</div><div class="stat-value" id="dash-realized">$0</div></div>
         </div>
     </div>
     
-    <div style="background: rgba(220,179,139,0.15); border-radius: 10px; padding: 10px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(220,179,139,0.3);">
-        <div>
-            <div style="font-size: 11px; font-weight: 700; color: #eaddcf;">指定日 (<span id="dash-date-label">今日</span>) 淨利</div>
-            <div style="font-size: 10px; color: #eaddcf; margin-top:2px; opacity:0.8;">(依目前分類計算)</div>
+    <div style="background: rgba(220,179,139,0.15); border-radius: 10px; padding: 12px; border: 1px solid rgba(220,179,139,0.3);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="font-size: 11px; font-weight: 700; color: #eaddcf;">📅 區間已實現淨利 (含配息)</div>
+            <div style="display:flex; gap:6px; align-items:center;">
+                <input type="date" id="startDate" class="date-picker-small" onchange="renderGrid()"> 
+                <span style="color:#eaddcf; font-size:10px;">至</span>
+                <input type="date" id="endDate" class="date-picker-small" onchange="renderGrid()">
+            </div>
         </div>
-        <div id="dash-daily-pnl" style="font-size: 20px; font-weight: 900; color: white;">$0</div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+            <div style="font-size: 10px; color: #eaddcf; opacity:0.8;">(依照目前選擇的標籤分類計算)</div>
+            <div id="dash-period-pnl" style="font-size: 20px; font-weight: 900; color: white;">$0</div>
+        </div>
     </div>
 </div>
 
 <div class="header">
     <div class="search-area">
         <div class="search-bar">🔍 <input type="text" id="searchInput" placeholder="搜尋代號或名稱..." oninput="renderGrid()"></div>
-        <input type="date" id="filterDate" class="date-picker" onchange="renderGrid()">
-    </div>
+        </div>
     
     <input type="file" id="htmlUploader" accept=".html" style="display:none;" onchange="handleHtmlUpload(event)">
     
@@ -301,8 +310,8 @@
         
         if (currentPin.length === 4) {
             setTimeout(() => {
-                if (currentPin === '0000' || currentPin === '1234') { 
-                    document.body.className = currentPin === '0000' ? 'mobile-view' : 'desktop-view'; 
+                if (currentPin === '0305' || currentPin === '1234') { 
+                    document.body.className = currentPin === '0305' ? 'mobile-view' : 'desktop-view'; 
                     document.getElementById('loginScreen').style.display = 'none'; 
                     checkFirebaseStatus(); 
                 } else { 
@@ -324,15 +333,19 @@
         }
     }
 
+    // 日期處理函數
     function getLocalDateStr(d) {
         const year = d.getFullYear(); const month = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${year}-${month}-${day}`;
     }
+    function getFirstDayOfMonthStr(d) {
+        const year = d.getFullYear(); const month = String(d.getMonth() + 1).padStart(2, '0'); return `${year}-${month}-01`;
+    }
+    
     const todayStr = getLocalDateStr(new Date());
-    document.getElementById('filterDate').value = todayStr;
+    // 設定區間查詢的預設值 (本月1號 到 今天)
+    document.getElementById('startDate').value = getFirstDayOfMonthStr(new Date());
+    document.getElementById('endDate').value = todayStr;
 
-    // ==========================================
-    // 全新功能：HTML 歷史資料智慧解析引擎
-    // ==========================================
     function handleHtmlUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -346,7 +359,6 @@
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(text, 'text/html');
 
-                // 1. 智慧尋找股票代號
                 let ticker = '';
                 const caption = doc.querySelector('caption');
                 if (caption && caption.innerText) {
@@ -366,7 +378,6 @@
                     event.target.value = ''; return;
                 }
 
-                // 2. 爬取所有日期與收盤價
                 const rows = doc.querySelectorAll('tr');
                 let newHistory = [];
 
@@ -374,7 +385,6 @@
                     const cells = row.querySelectorAll('td');
                     if (cells.length >= 5) {
                         let dateText = cells[0].innerText.trim();
-                        // 判斷是否為 Goodinfo 的日期格式，例如 '26/04/20
                         if (/^'\d{2}\/\d{2}\/\d{2}$/.test(dateText)) {
                             let parts = dateText.replace("'", "").split('/');
                             let formattedDate = `20${parts[0]}-${parts[1]}-${parts[2]}`;
@@ -392,10 +402,8 @@
                      event.target.value = ''; return;
                 }
 
-                // 照日期從小到大排序 (確保線圖是往右畫)
                 newHistory.sort((a,b) => new Date(a.date) - new Date(b.date));
 
-                // 3. 寫入本地資料庫並重新繪圖
                 if (!marketPrices[ticker]) {
                     marketPrices[ticker] = { price: newHistory[newHistory.length-1].price, history: newHistory };
                 } else {
@@ -403,15 +411,14 @@
                     marketPrices[ticker].price = newHistory[newHistory.length-1].price;
                 }
 
-                calculatePortfolio(); // 重新計算全系統資料
+                calculatePortfolio(); 
 
-                // 如果畫面正好停在這一檔股票的詳細視窗，就馬上刷新線圖給你看
                 if (currentChartTicker === ticker && document.getElementById('detailModal').style.display === 'flex') {
                     updateChart('year'); 
                 }
 
                 Swal.fire({icon: 'success', title: '匯入成功！', text: `已成功載入 ${ticker} 共 ${newHistory.length} 筆真實報價資料，圖表已更新。`, confirmButtonColor: '#b496c6'});
-                event.target.value = ''; // 清空上傳器狀態，方便下次選同一個檔案
+                event.target.value = ''; 
 
             } catch(err) {
                 console.error(err);
@@ -446,7 +453,6 @@
     let pieChartObj = null;
     let editingTxId = null;
 
-    // 生成歷史模擬資料以補齊天數
     function generateMockHistory(basePrice, volatility) {
         let history = []; let cur = basePrice; let d = new Date();
         for (let i = 365; i >= 0; i--) {
@@ -457,7 +463,6 @@
         return history;
     }
 
-    // 整合你之前上傳的 Goodinfo HTML 真實歷史數據作為預設展示
     let hist2367 = generateMockHistory(72, 0.015);
     hist2367.push({date: "2026-04-14", price: 72});
     hist2367.push({date: "2026-04-15", price: 72.1});
@@ -567,7 +572,6 @@
         else document.getElementById('priceLabel').innerText = '成交單價';
     }
 
-    // 表單清空機制：確保輸入區塊會回歸空白
     function clearFormFields() {
         document.getElementById('formTicker').value = ''; 
         document.getElementById('formName').value = '';
@@ -602,11 +606,7 @@
         }
     }
 
-    function closeForm() { 
-        document.getElementById('formModal').style.display = 'none'; 
-        editingTxId = null; 
-    }
-    
+    function closeForm() { document.getElementById('formModal').style.display = 'none'; editingTxId = null; }
     function closeDetail() { document.getElementById('detailModal').style.display = 'none'; }
     function closeAnalysis() { document.getElementById('analysisModal').style.display = 'none'; }
 
@@ -620,14 +620,12 @@
 
         const txData = { id: editingTxId || ('tx_' + Date.now()), ticker, name, price, quantity: qty, type: formTxType, date: document.getElementById('formDate').value, memo: document.getElementById('formMemo').value };
         if(formTxType === 'buy') txData.strategy = document.getElementById('formStrategy').value; 
-        
         if(formTxType === 'buy' || formTxType === 'sell') txData.fee = fee;
 
         if (isFirebaseConnected) {
             txRef.child(txData.id).set(txData).then(() => {
                 Swal.fire({icon: "success", title: "儲存成功 (雲端)", timer: 1000, showConfirmButton: false});
-                closeForm();
-                clearFormFields();
+                closeForm(); clearFormFields();
                 if (document.getElementById('detailModal').style.display === 'flex') setTimeout(() => showDetail(ticker), 300); 
             });
             if (formTxType === 'watch') {
@@ -646,11 +644,8 @@
                     marketPrices[ticker].history.push({ date: txData.date, price: currentP });
                 }
             }
-            
             Swal.fire({icon: "success", title: "儲存成功 (本機)", timer: 1000, showConfirmButton: false});
-            closeForm(); 
-            clearFormFields();
-            calculatePortfolio(); 
+            closeForm(); clearFormFields(); calculatePortfolio(); 
             if (document.getElementById('detailModal').style.display === 'flex') showDetail(ticker); 
         }
     }
@@ -662,10 +657,7 @@
             let p = portfolio[tx.ticker]; p.history.push(tx);
 
             if (tx.type === 'buy') {
-                p.shares += tx.quantity; 
-                p.totalCost += (tx.price * tx.quantity) + (tx.fee || 0); 
-                p.hasTrade = true; 
-                if(tx.strategy) p.strategy = tx.strategy; 
+                p.shares += tx.quantity; p.totalCost += (tx.price * tx.quantity) + (tx.fee || 0); p.hasTrade = true; if(tx.strategy) p.strategy = tx.strategy; 
             } else if (tx.type === 'sell') {
                 let avgCost = p.shares > 0 ? (p.totalCost / p.shares) : 0;
                 let sellValue = tx.price * tx.quantity; let costBasis = avgCost * tx.quantity;
@@ -684,7 +676,6 @@
             let mData = marketPrices[p.ticker] || {};
             p.currentPrice = mData.price || (p.status === 'watch' ? p.watchPrice : (p.shares>0 ? (p.totalCost/p.shares) : 0));
             p.avgPrice = p.shares > 0 ? (p.totalCost / p.shares) : 0; p.marketValue = p.shares * p.currentPrice; p.unrealizedGain = p.marketValue - p.totalCost;
-            
             p.roiPercent = (p.shares > 0 && p.totalCost > 0) ? (p.unrealizedGain / p.totalCost) * 100 : 0;
             p.realizedRoiPercent = (p.realizedCostBasis > 0) ? (p.realizedGain / p.realizedCostBasis) * 100 : 0;
         });
@@ -693,11 +684,14 @@
 
     function renderGrid() {
         const search = document.getElementById('searchInput').value.toLowerCase();
-        const filterDate = document.getElementById('filterDate').value;
+        
+        // 抓取新的區間設定
+        const sDate = document.getElementById('startDate').value || '1970-01-01';
+        const eDate = document.getElementById('endDate').value || '2099-12-31';
+        
         const grid = document.getElementById('portfolioGrid'); grid.innerHTML = "";
-        document.getElementById('dash-date-label').innerText = filterDate === todayStr ? '今日' : filterDate.substring(5);
 
-        let dCost = 0, dMarket = 0, dUnrealized = 0, dRealized = 0, dRealizedCost = 0, dDailyPnl = 0, dDailyCost = 0;
+        let dCost = 0, dMarket = 0, dUnrealized = 0, dRealized = 0, dRealizedCost = 0, dPeriodPnl = 0, dPeriodCost = 0;
 
         let displayItems = Object.values(portfolio).filter(p => {
             const matchSearch = p.ticker.includes(search) || p.name.includes(search);
@@ -709,8 +703,12 @@
             if (p.shares > 0) { dCost += p.totalCost; dMarket += p.marketValue; dUnrealized += p.unrealizedGain; }
             dRealized += p.realizedGain; dRealizedCost += p.realizedCostBasis; 
 
+            // 計算區間內的已實現淨利
             p.history.forEach(tx => { 
-                if (tx.date === filterDate && (tx.type === 'sell' || tx.type === 'div')) { dDailyPnl += (tx.calculatedGain || 0); if(tx.type === 'sell') dDailyCost += (tx.costBasis || 0); }
+                if (tx.date >= sDate && tx.date <= eDate && (tx.type === 'sell' || tx.type === 'div')) { 
+                    dPeriodPnl += (tx.calculatedGain || 0); 
+                    if(tx.type === 'sell') dPeriodCost += (tx.costBasis || 0); 
+                }
             });
 
             let badge = '';
@@ -774,13 +772,20 @@
         });
 
         const fmt = val => '$' + Math.round(val).toLocaleString();
-        let dashUnrealizedPct = dCost > 0 ? (dUnrealized / dCost) * 100 : 0; let dashRealizedPct = dRealizedCost > 0 ? (dRealized / dRealizedCost) * 100 : 0; let dashDailyPct = dDailyCost > 0 ? (dDailyPnl / dDailyCost) * 100 : 0;
+        let dashUnrealizedPct = dCost > 0 ? (dUnrealized / dCost) * 100 : 0; 
+        let dashRealizedPct = dRealizedCost > 0 ? (dRealized / dRealizedCost) * 100 : 0; 
+        let periodPct = dPeriodCost > 0 ? (dPeriodPnl / dPeriodCost) * 100 : 0;
 
         document.getElementById('dash-cost').innerText = fmt(dCost); document.getElementById('dash-market').innerText = fmt(dMarket);
+        
         document.getElementById('dash-unrealized').innerHTML = `${dUnrealized>=0?'+':''}${fmt(dUnrealized)} <span class="pct-text">(${dashUnrealizedPct.toFixed(2)}%)</span>`; document.getElementById('dash-unrealized').className = 'stat-value ' + (dUnrealized>=0?'up-text':'down-text');
+        
         document.getElementById('dash-realized').innerHTML = `${dRealized>=0?'+':''}${fmt(dRealized)} <span class="pct-text" style="font-size:12px;">(${dashRealizedPct.toFixed(2)}%)</span>`; document.getElementById('dash-realized').style.color = dRealized >= 0 ? 'var(--up)' : 'var(--down)';
-        let dailyPctStr = dDailyCost > 0 ? ` <span class="pct-text" style="font-size:14px;">(${dashDailyPct.toFixed(2)}%)</span>` : '';
-        document.getElementById('dash-daily-pnl').innerHTML = `${dDailyPnl>=0?'+':''}${fmt(dDailyPnl)}${dailyPctStr}`; document.getElementById('dash-daily-pnl').style.color = dDailyPnl >= 0 ? 'var(--up)' : 'var(--down)';
+        
+        // 渲染全新的區間淨利
+        let periodPctStr = dPeriodCost > 0 ? ` <span class="pct-text" style="font-size:14px;">(${periodPct.toFixed(2)}%)</span>` : '';
+        document.getElementById('dash-period-pnl').innerHTML = `${dPeriodPnl>=0?'+':''}${fmt(dPeriodPnl)}${periodPctStr}`; 
+        document.getElementById('dash-period-pnl').style.color = dPeriodPnl >= 0 ? 'var(--up)' : 'var(--down)';
     }
 
     function openAnalysis() {
