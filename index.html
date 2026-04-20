@@ -3,18 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Stock Pro 奶油特仕版</title>
+    <title>Stock Pro 奶油特仕版 (雲端版)</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-database-compat.js"></script>
 
     <style>
         :root { 
             /* 奶油拿鐵色系 */
             --main-dark: #8c7a6b;   
             --main-blue: #dcb38b;   
-            --up: #e26b6b;          /* 調整為更清晰飽和的胭脂紅 */
+            --up: #e26b6b;          
             --down: #8bc4a9;        
             --watch: #e6a87c;       
             --div: #e5b662;         
@@ -113,7 +116,7 @@
 
 <div id="loginScreen">
     <div style="font-size: 28px; font-weight: 900; margin-bottom: 10px; color: white;">Stock Pro</div>
-    <div style="font-size: 12px; font-weight: bold; margin-bottom: 30px; color: #eaddcf;">(奶油特仕版)</div>
+    <div style="font-size: 12px; font-weight: bold; margin-bottom: 30px; color: #eaddcf;">(奶油特仕版 - 雲端版)</div>
     <div class="pin-dots">
         <span class="dot" id="dot-0"></span><span class="dot" id="dot-1"></span>
         <span class="dot" id="dot-2"></span><span class="dot" id="dot-3"></span>
@@ -127,6 +130,7 @@
 </div>
 
 <div class="dashboard">
+    <div class="demo-badge">雲端同步中</div>
     <div style="font-size: 12px; color:#eaddcf; font-weight: 900; margin-bottom: 2px;">
         <span id="dash-title">☕ 總覽 (全部)</span>
     </div>
@@ -263,7 +267,7 @@
         </div>
         
         <div class="input-group" id="watchCurrentPriceGroup" style="display:none; background:rgba(229, 182, 98, 0.1); padding:10px; border-radius:10px;">
-            <label style="color:#b28431;">目前市場時價 (供系統追蹤)</label>
+            <label style="color:#b28431;">目前市場時價 (供系統同步追蹤)</label>
             <input type="number" step="0.01" class="input-control" id="formCurrentPrice" placeholder="輸入現在股價..." style="border-color:var(--div); background:white;">
         </div>
         
@@ -283,39 +287,43 @@
     function getLocalDateStr(d) {
         const year = d.getFullYear(); const month = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${year}-${month}-${day}`;
     }
-
-    let currentPin = '';
-    function pressKey(key) {
-        if (key === 'back') currentPin = currentPin.slice(0, -1); else if (currentPin.length < 4) currentPin += key; 
-        for (let i = 0; i < 4; i++) document.getElementById(`dot-${i}`).className = i < currentPin.length ? 'dot filled' : 'dot';
-        if (currentPin.length === 4) {
-            setTimeout(() => {
-                if (currentPin === '0000' || currentPin === '1234') { 
-                    document.body.className = currentPin === '0000' ? 'mobile-view' : 'desktop-view'; 
-                    document.getElementById('loginScreen').style.display = 'none'; 
-                } else { 
-                    Swal.fire({icon:"error", title:"密碼錯誤", confirmButtonColor:"#dcb38b"}); 
-                    currentPin = ''; 
-                    for(let i=0;i<4;i++) document.getElementById(`dot-${i}`).className='dot'; 
-                }
-            }, 100);
-        }
-    }
-
     const todayStr = getLocalDateStr(new Date());
     document.getElementById('filterDate').value = todayStr;
 
-    let allTransactions = [
-        { id: "tx1", ticker: "2330", name: "台積電", quantity: 1000, price: 580, type: "buy", strategy: "long_term", date: "2023-11-10", memo: "波段起漲" },
-        { id: "tx_div", ticker: "2330", name: "台積電", quantity: 0, price: 4000, type: "div", date: todayStr, memo: "第一季配息" },
-        { id: "tx3", ticker: "0050", name: "元大台灣50", quantity: 3000, price: 140, type: "buy", strategy: "short_term", date: "2023-12-01", memo: "" },
-        { id: "tx_new_b", ticker: "3231", name: "緯創", quantity: 5000, price: 110, type: "buy", strategy: "day_trade", date: todayStr, memo: "開盤進" },
-        { id: "tx_new_s", ticker: "3231", name: "緯創", quantity: 5000, price: 112, type: "sell", fee: 1600, date: todayStr, memo: "尾盤出" },
-        { id: "tx4", ticker: "2603", name: "長榮", quantity: 2000, price: 110, type: "buy", strategy: "short_term", date: "2023-10-05", memo: "" },
-        { id: "tx5", ticker: "2603", name: "長榮", quantity: 2000, price: 175, type: "sell", fee: 1200, date: "2024-03-20", memo: "達到停利點" },
-        { id: "tx6", ticker: "2317", name: "鴻海", quantity: 0, price: 125, type: "watch", date: "2024-01-10", memo: "等拉回" }
-    ];
+    // ==========================================
+    // ！！！ 請在這裡貼上你的 Firebase Config ！！！
+    // ==========================================
+    const firebaseConfig = {
+        apiKey: "請替換為你的_API_KEY",
+        authDomain: "請替換為你的_PROJECT_ID.firebaseapp.com",
+        databaseURL: "請替換為你的_DATABASE_URL", // Realtime Database 網址
+        projectId: "請替換為你的_PROJECT_ID",
+        storageBucket: "請替換為你的_PROJECT_ID.appspot.com",
+        messagingSenderId: "請替換為你的_SENDER_ID",
+        appId: "請替換為你的_APP_ID"
+    };
 
+    // 初始化 Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    
+    // 定義資料庫路徑 (集中管理在 stockpro 節點下，保持資料庫整潔)
+    const txRef = db.ref('stockpro/transactions');
+    const priceRef = db.ref('stockpro/customPrices');
+
+    // 系統變數
+    let currentPin = '';
+    let allTransactions = []; 
+    let customPrices = {}; 
+    let portfolio = {}; 
+    let currentFilter = 'all'; 
+    let formTxType = 'buy';
+    let currentChartTicker = '';
+    let currentChartObj = null;
+    let pieChartObj = null;
+    let editingTxId = null;
+
+    // 模擬的線圖歷史資料產生器 (保持圖表豐富度)
     function generateMockHistory(basePrice, volatility) {
         let history = []; let cur = basePrice; let d = new Date();
         for (let i = 365; i >= 0; i--) {
@@ -335,15 +343,71 @@
     };
     Object.keys(marketPrices).forEach(k => { marketPrices[k].history[marketPrices[k].history.length-1].price = marketPrices[k].price; });
 
-    let portfolio = {}; 
-    let currentFilter = 'all'; 
-    let formTxType = 'buy';
-    let currentChartTicker = '';
-    let currentChartObj = null;
-    let pieChartObj = null;
-    let editingTxId = null;
+    // === Firebase 資料庫監聽與同步 ===
 
-    window.onload = () => { calculatePortfolio(); };
+    // 1. 監聽交易紀錄
+    txRef.on('value', (snapshot) => {
+        allTransactions = [];
+        if (snapshot.exists()) {
+            snapshot.forEach(child => { allTransactions.push(child.val()); });
+        }
+        calculatePortfolio();
+    });
+
+    // 2. 監聽跨裝置的「自訂時價」
+    priceRef.on('value', (snapshot) => {
+        if (snapshot.exists()) {
+            customPrices = snapshot.val();
+            Object.keys(customPrices).forEach(ticker => {
+                if (!marketPrices[ticker]) {
+                    marketPrices[ticker] = { price: customPrices[ticker], history: [{date: todayStr, price: customPrices[ticker]}] };
+                } else {
+                    marketPrices[ticker].price = customPrices[ticker];
+                    let h = marketPrices[ticker].history;
+                    let last = h.length > 0 ? h[h.length - 1] : null;
+                    if (last && last.date === todayStr) last.price = customPrices[ticker]; 
+                    else h.push({ date: todayStr, price: customPrices[ticker] });
+                }
+            });
+        }
+        calculatePortfolio();
+    });
+
+    // 3. 初始保護機制：如果資料庫完全沒東西，推入預設展示資料
+    txRef.once('value', (snapshot) => {
+        if (!snapshot.exists()) {
+            const initialDemoData = [
+                { id: "tx1", ticker: "2330", name: "台積電", quantity: 1000, price: 580, type: "buy", strategy: "long_term", date: "2023-11-10", memo: "波段起漲" },
+                { id: "tx_div", ticker: "2330", name: "台積電", quantity: 0, price: 4000, type: "div", date: todayStr, memo: "第一季配息" },
+                { id: "tx3", ticker: "0050", name: "元大台灣50", quantity: 3000, price: 140, type: "buy", strategy: "short_term", date: "2023-12-01", memo: "" },
+                { id: "tx_new_b", ticker: "3231", name: "緯創", quantity: 5000, price: 110, type: "buy", strategy: "day_trade", date: todayStr, memo: "開盤進" },
+                { id: "tx_new_s", ticker: "3231", name: "緯創", quantity: 5000, price: 112, type: "sell", fee: 1600, date: todayStr, memo: "尾盤出" },
+                { id: "tx4", ticker: "2603", name: "長榮", quantity: 2000, price: 110, type: "buy", strategy: "short_term", date: "2023-10-05", memo: "" },
+                { id: "tx5", ticker: "2603", name: "長榮", quantity: 2000, price: 175, type: "sell", fee: 1200, date: "2024-03-20", memo: "達到停利點" },
+                { id: "tx6", ticker: "2317", name: "鴻海", quantity: 0, price: 125, type: "watch", date: "2024-01-10", memo: "等拉回" }
+            ];
+            initialDemoData.forEach(tx => txRef.child(tx.id).set(tx));
+        }
+    });
+
+    // 密碼鎖邏輯
+    function pressKey(key) {
+        if (key === 'back') currentPin = currentPin.slice(0, -1); else if (currentPin.length < 4) currentPin += key; 
+        for (let i = 0; i < 4; i++) document.getElementById(`dot-${i}`).className = i < currentPin.length ? 'dot filled' : 'dot';
+        if (currentPin.length === 4) {
+            setTimeout(() => {
+                // 這裡可以換成你自己喜歡的密碼
+                if (currentPin === '0000' || currentPin === '1234') { 
+                    document.body.className = currentPin === '0000' ? 'mobile-view' : 'desktop-view'; 
+                    document.getElementById('loginScreen').style.display = 'none'; 
+                } else { 
+                    Swal.fire({icon:"error", title:"密碼錯誤", confirmButtonColor:"#dcb38b"}); 
+                    currentPin = ''; 
+                    for(let i=0;i<4;i++) document.getElementById(`dot-${i}`).className='dot'; 
+                }
+            }, 100);
+        }
+    }
 
     function exportCSV() {
         let csvContent = "data:text/csv;charset=utf-8,\uFEFF系統ID,股票代號,股票名稱,交易類別,策略標籤,數量(股),單價/總額,交易成本(手續費/稅金),交易日期,自訂備註\r\n";
@@ -401,6 +465,7 @@
     function closeDetail() { document.getElementById('detailModal').style.display = 'none'; }
     function closeAnalysis() { document.getElementById('analysisModal').style.display = 'none'; }
 
+    // === Firebase: 寫入紀錄 ===
     function saveTransaction() {
         const ticker = document.getElementById('formTicker').value.trim(); const name = document.getElementById('formName').value.trim();
         let qty = (formTxType === 'watch' || formTxType === 'div') ? 0 : (parseInt(document.getElementById('formQty').value) || 0);
@@ -409,26 +474,24 @@
         if (!ticker || !name || price <= 0 || ((formTxType !== 'watch' && formTxType !== 'div') && qty <= 0)) return Swal.fire("錯誤", "資料填寫不完整", "error");
         if ((formTxType !== 'watch' && formTxType !== 'div') && document.getElementById('formUnit').value === 'lot') qty = qty * 1000;
 
-        const txData = { id: editingTxId || ('demo_' + Date.now()), ticker, name, price, quantity: qty, type: formTxType, date: document.getElementById('formDate').value, memo: document.getElementById('formMemo').value };
+        const txData = { id: editingTxId || ('tx_' + Date.now()), ticker, name, price, quantity: qty, type: formTxType, date: document.getElementById('formDate').value, memo: document.getElementById('formMemo').value };
         if(formTxType === 'buy') txData.strategy = document.getElementById('formStrategy').value; if(formTxType === 'sell') txData.fee = fee;
 
-        if (editingTxId) { const index = allTransactions.findIndex(t => t.id === editingTxId); if(index !== -1) allTransactions[index] = txData; } 
-        else { allTransactions.push(txData); if (!marketPrices[ticker]) marketPrices[ticker] = { price: price, history: [{ date: txData.date, price: price }] }; }
+        // 寫入 Firebase (取代原本的 Array Push)
+        txRef.child(txData.id).set(txData).then(() => {
+            Swal.fire({icon: "success", title: "儲存成功", timer: 1000, showConfirmButton: false});
+            closeForm();
+            // Firebase 會自動觸發 txRef.on('value') 更新畫面，若正在看詳細視窗則延遲刷新
+            if (document.getElementById('detailModal').style.display === 'flex') {
+                setTimeout(() => showDetail(ticker), 300); 
+            }
+        });
 
-        // 處理觀望時一併輸入的目前時價
+        // 處理觀望時一併輸入的目前時價 (同步到 Firebase)
         if (formTxType === 'watch') {
             const currentP = parseFloat(document.getElementById('formCurrentPrice').value);
-            if (currentP > 0) {
-                if (!marketPrices[ticker]) marketPrices[ticker] = { price: currentP, history: [] };
-                marketPrices[ticker].price = currentP;
-                let h = marketPrices[ticker].history;
-                let last = h.length > 0 ? h[h.length - 1] : null;
-                if (last && last.date === txData.date) last.price = currentP; else h.push({ date: txData.date, price: currentP });
-            }
+            if (currentP > 0) priceRef.child(ticker).set(currentP);
         }
-
-        Swal.fire({icon: "success", title: "儲存成功", timer: 1000, showConfirmButton: false});
-        closeForm(); calculatePortfolio(); if (document.getElementById('detailModal').style.display === 'flex') showDetail(ticker); 
     }
 
     function calculatePortfolio() {
@@ -494,7 +557,6 @@
             let contentHtml = '';
             if (p.status === 'watch') {
                 let watchDiff = p.currentPrice - p.watchPrice; let watchPct = p.watchPrice > 0 ? (Math.abs(watchDiff) / p.watchPrice) * 100 : 0;
-                // 改為直列排版 (區塊顯示) 避免擠壓
                 let watchDiffStr = `<div class="${watchDiff>=0?'up-text':'down-text'}" style="font-size:11px; margin-top:2px; font-weight:900;">${watchDiff>=0?'▲':'▼'}${' '}${Math.abs(watchDiff).toFixed(2)} (${watchPct.toFixed(2)}%)</div>`;
                 contentHtml = `
                     <div class="grid-row" style="margin-bottom:8px;"><span>目標價</span><span class="grid-val">$${p.watchPrice.toFixed(2)}</span></div>
@@ -509,7 +571,6 @@
             } else if (p.shares > 0) {
                 let gain = p.unrealizedGain; let percentStr = ` (${p.roiPercent.toFixed(2)}%)`; 
                 let priceDiff = p.currentPrice - p.avgPrice; let priceDiffPct = p.avgPrice > 0 ? (Math.abs(priceDiff) / p.avgPrice) * 100 : 0;
-                // 改為直列排版 (區塊顯示) 避免擠壓
                 let priceDiffStr = `<div class="${priceDiff>=0?'up-text':'down-text'}" style="font-size:11px; margin-top:2px; font-weight:900;">${priceDiff>=0?'▲':'▼'}${' '}${Math.abs(priceDiff).toFixed(2)} (${priceDiffPct.toFixed(2)}%)</div>`;
                 contentHtml = `
                     <div class="grid-row"><span>持有股數</span><span class="grid-val">${p.shares.toLocaleString()} 股</span></div>
@@ -595,9 +656,13 @@
         }
         document.getElementById('detStats').innerHTML = statsHtml;
 
+        // === Firebase: 刪除紀錄 ===
         window.deleteTx = async function(id) {
             const res = await Swal.fire({ title: '刪除紀錄？', icon: 'warning', showCancelButton: true, confirmButtonColor: '#e26b6b' });
-            if(res.isConfirmed) { allTransactions = allTransactions.filter(t => t.id !== id); calculatePortfolio(); showDetail(ticker); }
+            if(res.isConfirmed) { 
+                txRef.child(id).remove(); // 從 Firebase 刪除
+                setTimeout(() => showDetail(ticker), 300); 
+            }
         };
 
         const listHtml = p.history.map(tx => {
@@ -671,6 +736,7 @@
         });
     }
 
+    // === Firebase: 批量更新時價 ===
     async function openQuickPrice() {
         let activeTickers = Object.values(portfolio).filter(p => {
             if (currentFilter === 'all') return p.shares > 0 || p.status === 'watch';
@@ -694,16 +760,14 @@
 
         if (res) {
             Swal.fire({ title: '報價更新中...', didOpen: () => Swal.showLoading() });
-            res.forEach(item => {
-                if(marketPrices[item.ticker]) {
-                    marketPrices[item.ticker].price = item.price;
-                    let h = marketPrices[item.ticker].history;
-                    let last = h.length > 0 ? h[h.length - 1] : null;
-                    if (last && last.date === todayStr) last.price = item.price; else h.push({ date: todayStr, price: item.price });
-                }
+            
+            // 一次性打包更新到 Firebase
+            let updates = {};
+            res.forEach(item => { updates[item.ticker] = item.price; });
+            
+            priceRef.update(updates).then(() => {
+                Swal.fire({icon: "success", title: "完成", text:"價格已為您更新", timer: 1500, showConfirmButton: false});
             });
-            calculatePortfolio();
-            Swal.fire({icon: "success", title: "完成", text:"價格已為您更新", timer: 1500, showConfirmButton: false});
         }
     }
 </script>
