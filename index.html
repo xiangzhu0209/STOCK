@@ -115,7 +115,7 @@
 
 <div id="loginScreen">
     <div style="font-size: 28px; font-weight: 900; margin-bottom: 10px; color: white;">Stock Pro</div>
-    <div style="font-size: 12px; font-weight: bold; margin-bottom: 30px; color: #eaddcf;">(奶油特仕版 - 真實庫存匯入)</div>
+    <div style="font-size: 12px; font-weight: bold; margin-bottom: 30px; color: #eaddcf;">(奶油特仕版 - 真實庫存)</div>
     <div class="pin-dots">
         <span class="dot" id="dot-0"></span><span class="dot" id="dot-1"></span>
         <span class="dot" id="dot-2"></span><span class="dot" id="dot-3"></span>
@@ -129,7 +129,7 @@
 </div>
 
 <div class="dashboard">
-    <div class="demo-badge">雲端連線中</div>
+    <div class="demo-badge" id="cloudStatusBadge">雲端連線中...</div>
     <div style="font-size: 12px; color:#eaddcf; font-weight: 900; margin-bottom: 2px;">
         <span id="dash-title">☕ 總覽 (全部)</span>
     </div>
@@ -283,6 +283,51 @@
 </div>
 
 <script>
+    // ==========================================
+    // 第一道防線： UI 與密碼鎖邏輯 (保證不會被 Firebase 卡死)
+    // ==========================================
+    let currentPin = '';
+    let isFirebaseConnected = false;
+
+    function pressKey(key) {
+        if (key === 'back') currentPin = currentPin.slice(0, -1); 
+        else if (currentPin.length < 4) currentPin += key; 
+        
+        for (let i = 0; i < 4; i++) {
+            document.getElementById(`dot-${i}`).className = i < currentPin.length ? 'dot filled' : 'dot';
+        }
+        
+        if (currentPin.length === 4) {
+            setTimeout(() => {
+                if (currentPin === '0000' || currentPin === '1234') { 
+                    document.body.className = currentPin === '0000' ? 'mobile-view' : 'desktop-view'; 
+                    document.getElementById('loginScreen').style.display = 'none'; 
+                    checkFirebaseStatus(); // 登入後自動檢查連線狀態
+                } else { 
+                    Swal.fire({icon:"error", title:"密碼錯誤", confirmButtonColor:"#dcb38b"}); 
+                    currentPin = ''; 
+                    for(let i=0;i<4;i++) document.getElementById(`dot-${i}`).className='dot'; 
+                }
+            }, 100);
+        }
+    }
+
+    function checkFirebaseStatus() {
+        if (!isFirebaseConnected) {
+            document.getElementById('cloudStatusBadge').innerText = "本機測試中";
+            document.getElementById('cloudStatusBadge').style.background = "#9e8e82";
+            Swal.fire({
+                icon: 'info',
+                title: '本機測試模式',
+                text: '偵測到 Firebase 金鑰尚未設定（或是設定有誤），目前顯示為你匯入的「玉山證券初始資料」。隨時貼上正確金鑰，就能開啟雲端同步喔！',
+                confirmButtonColor: '#dcb38b'
+            });
+        } else {
+            document.getElementById('cloudStatusBadge').innerText = "雲端同步中";
+            document.getElementById('cloudStatusBadge').style.background = "var(--div)";
+        }
+    }
+
     function getLocalDateStr(d) {
         const year = d.getFullYear(); const month = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${year}-${month}-${day}`;
     }
@@ -290,7 +335,7 @@
     document.getElementById('filterDate').value = todayStr;
 
     // ==========================================
-    // ！！！ 請在這裡貼上你的 Firebase Config ！！！
+    // 第二道防線： 核心系統與 Firebase 連線
     // ==========================================
     const firebaseConfig = {
         apiKey: "請替換為你的_API_KEY",
@@ -302,14 +347,7 @@
         appId: "請替換為你的_APP_ID"
     };
 
-    // 初始化 Firebase
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-    const txRef = db.ref('stockpro/transactions');
-    const priceRef = db.ref('stockpro/customPrices');
-
-    // 系統變數
-    let currentPin = '';
+    let db, txRef, priceRef;
     let allTransactions = []; 
     let customPrices = {}; 
     let portfolio = {}; 
@@ -320,7 +358,7 @@
     let pieChartObj = null;
     let editingTxId = null;
 
-    // 產生專屬一年期模擬歷史資料 (以你真實成交價為核心浮動)
+    // 產生專屬一年期模擬歷史資料
     function generateMockHistory(basePrice, volatility) {
         let history = []; let cur = basePrice; let d = new Date();
         for (let i = 365; i >= 0; i--) {
@@ -333,73 +371,76 @@
 
     // 依據玉山證券明細為你建立的專屬初始時價
     let marketPrices = {
-        "6770": { price: 53.00, history: generateMockHistory(53.00, 0.015) }, // 成本 52.70
-        "2367": { price: 72.10, history: generateMockHistory(72.10, 0.02) },  // 成本 70.50
-        "2337": { price: 138.50, history: generateMockHistory(138.50, 0.015) }, // 成本 140.00
-        "5328": { price: 28.50, history: generateMockHistory(28.50, 0.02) }  // 已結清追蹤
+        "6770": { price: 53.00, history: generateMockHistory(53.00, 0.015) },
+        "2367": { price: 72.10, history: generateMockHistory(72.10, 0.02) },
+        "2337": { price: 138.50, history: generateMockHistory(138.50, 0.015) },
+        "5328": { price: 28.50, history: generateMockHistory(28.50, 0.02) }
     };
     Object.keys(marketPrices).forEach(k => { marketPrices[k].history[marketPrices[k].history.length-1].price = marketPrices[k].price; });
 
-    // === Firebase 資料庫監聽與同步 ===
+    // 專屬玉山初始資料包
+    const initialDemoData = [
+        { id: "tx_buy_6770", ticker: "6770", name: "力積電", quantity: 1000, price: 52.70, type: "buy", strategy: "long_term", date: "2026-04-16", memo: "玉山證券匯入" },
+        { id: "tx_buy_2367", ticker: "2367", name: "燿華", quantity: 1000, price: 70.50, type: "buy", strategy: "short_term", date: "2026-04-16", memo: "玉山證券匯入" },
+        { id: "tx_buy_2337", ticker: "2337", name: "旺宏", quantity: 1000, price: 140.00, type: "buy", strategy: "long_term", date: "2026-04-16", memo: "玉山證券匯入" },
+        { id: "tx_buy_5328", ticker: "5328", name: "華容", quantity: 1000, price: 25.00, type: "buy", strategy: "short_term", date: "2026-03-01", memo: "歷史建倉" },
+        { id: "tx_sell_5328", ticker: "5328", name: "華容", quantity: 1000, price: 28.30, fee: 124, type: "sell", date: "2026-04-16", memo: "獲利了結" }
+    ];
 
-    txRef.on('value', (snapshot) => {
-        allTransactions = [];
-        if (snapshot.exists()) {
-            snapshot.forEach(child => { allTransactions.push(child.val()); });
-        }
-        calculatePortfolio();
-    });
+    // 安全啟動 Firebase (防呆機制)
+    try {
+        if (firebaseConfig.apiKey && !firebaseConfig.apiKey.includes("請替換")) {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+            txRef = db.ref('stockpro/transactions');
+            priceRef = db.ref('stockpro/customPrices');
+            isFirebaseConnected = true;
 
-    priceRef.on('value', (snapshot) => {
-        if (snapshot.exists()) {
-            customPrices = snapshot.val();
-            Object.keys(customPrices).forEach(ticker => {
-                if (!marketPrices[ticker]) {
-                    marketPrices[ticker] = { price: customPrices[ticker], history: [{date: todayStr, price: customPrices[ticker]}] };
-                } else {
-                    marketPrices[ticker].price = customPrices[ticker];
-                    let h = marketPrices[ticker].history;
-                    let last = h.length > 0 ? h[h.length - 1] : null;
-                    if (last && last.date === todayStr) last.price = customPrices[ticker]; 
-                    else h.push({ date: todayStr, price: customPrices[ticker] });
+            // 監聽雲端資料
+            txRef.on('value', (snapshot) => {
+                allTransactions = [];
+                if (snapshot.exists()) {
+                    snapshot.forEach(child => { allTransactions.push(child.val()); });
+                }
+                calculatePortfolio();
+            });
+
+            priceRef.on('value', (snapshot) => {
+                if (snapshot.exists()) {
+                    customPrices = snapshot.val();
+                    Object.keys(customPrices).forEach(ticker => {
+                        if (!marketPrices[ticker]) {
+                            marketPrices[ticker] = { price: customPrices[ticker], history: [{date: todayStr, price: customPrices[ticker]}] };
+                        } else {
+                            marketPrices[ticker].price = customPrices[ticker];
+                            let h = marketPrices[ticker].history;
+                            let last = h.length > 0 ? h[h.length - 1] : null;
+                            if (last && last.date === todayStr) last.price = customPrices[ticker]; 
+                            else h.push({ date: todayStr, price: customPrices[ticker] });
+                        }
+                    });
+                }
+                calculatePortfolio();
+            });
+
+            // 如果雲端完全是空的，幫你自動寫入一次玉山初始資料
+            txRef.once('value', (snapshot) => {
+                if (!snapshot.exists()) {
+                    initialDemoData.forEach(tx => txRef.child(tx.id).set(tx));
                 }
             });
+
+        } else {
+            // 沒有設定金鑰，啟動本機模式
+            allTransactions = [...initialDemoData];
+            calculatePortfolio();
         }
+    } catch (e) {
+        console.error("Firebase 連線發生異常:", e);
+        allTransactions = [...initialDemoData];
         calculatePortfolio();
-    });
-
-    // 初始保護機制：如果是空的，自動寫入你的真實交割單紀錄！
-    txRef.once('value', (snapshot) => {
-        if (!snapshot.exists()) {
-            const initialDemoData = [
-                { id: "tx_buy_6770", ticker: "6770", name: "力積電", quantity: 1000, price: 52.70, type: "buy", strategy: "long_term", date: "2026-04-16", memo: "玉山證券匯入" },
-                { id: "tx_buy_2367", ticker: "2367", name: "燿華", quantity: 1000, price: 70.50, type: "buy", strategy: "short_term", date: "2026-04-16", memo: "玉山證券匯入" },
-                { id: "tx_buy_2337", ticker: "2337", name: "旺宏", quantity: 1000, price: 140.00, type: "buy", strategy: "long_term", date: "2026-04-16", memo: "玉山證券匯入" },
-                // 以下為了讓你有已實現損益的展示，我往前推算建構了華容的買賣紀錄
-                { id: "tx_buy_5328", ticker: "5328", name: "華容", quantity: 1000, price: 25.00, type: "buy", strategy: "short_term", date: "2026-03-01", memo: "歷史建倉" },
-                { id: "tx_sell_5328", ticker: "5328", name: "華容", quantity: 1000, price: 28.30, fee: 124, type: "sell", date: "2026-04-16", memo: "獲利了結" }
-            ];
-            initialDemoData.forEach(tx => txRef.child(tx.id).set(tx));
-        }
-    });
-
-    // 密碼鎖邏輯
-    function pressKey(key) {
-        if (key === 'back') currentPin = currentPin.slice(0, -1); else if (currentPin.length < 4) currentPin += key; 
-        for (let i = 0; i < 4; i++) document.getElementById(`dot-${i}`).className = i < currentPin.length ? 'dot filled' : 'dot';
-        if (currentPin.length === 4) {
-            setTimeout(() => {
-                if (currentPin === '0000' || currentPin === '1234') { 
-                    document.body.className = currentPin === '0000' ? 'mobile-view' : 'desktop-view'; 
-                    document.getElementById('loginScreen').style.display = 'none'; 
-                } else { 
-                    Swal.fire({icon:"error", title:"密碼錯誤", confirmButtonColor:"#dcb38b"}); 
-                    currentPin = ''; 
-                    for(let i=0;i<4;i++) document.getElementById(`dot-${i}`).className='dot'; 
-                }
-            }, 100);
-        }
     }
+
 
     function exportCSV() {
         let csvContent = "data:text/csv;charset=utf-8,\uFEFF系統ID,股票代號,股票名稱,交易類別,策略標籤,數量(股),單價/總額,交易成本(手續費/稅金),交易日期,自訂備註\r\n";
@@ -457,7 +498,7 @@
     function closeDetail() { document.getElementById('detailModal').style.display = 'none'; }
     function closeAnalysis() { document.getElementById('analysisModal').style.display = 'none'; }
 
-    // === Firebase: 寫入紀錄 ===
+    // === 儲存紀錄邏輯 ===
     function saveTransaction() {
         const ticker = document.getElementById('formTicker').value.trim(); const name = document.getElementById('formName').value.trim();
         let qty = (formTxType === 'watch' || formTxType === 'div') ? 0 : (parseInt(document.getElementById('formQty').value) || 0);
@@ -469,17 +510,32 @@
         const txData = { id: editingTxId || ('tx_' + Date.now()), ticker, name, price, quantity: qty, type: formTxType, date: document.getElementById('formDate').value, memo: document.getElementById('formMemo').value };
         if(formTxType === 'buy') txData.strategy = document.getElementById('formStrategy').value; if(formTxType === 'sell') txData.fee = fee;
 
-        txRef.child(txData.id).set(txData).then(() => {
-            Swal.fire({icon: "success", title: "儲存成功", timer: 1000, showConfirmButton: false});
-            closeForm();
-            if (document.getElementById('detailModal').style.display === 'flex') {
-                setTimeout(() => showDetail(ticker), 300); 
+        if (isFirebaseConnected) {
+            txRef.child(txData.id).set(txData).then(() => {
+                Swal.fire({icon: "success", title: "儲存成功 (雲端)", timer: 1000, showConfirmButton: false});
+                closeForm();
+                if (document.getElementById('detailModal').style.display === 'flex') setTimeout(() => showDetail(ticker), 300); 
+            });
+            if (formTxType === 'watch') {
+                const currentP = parseFloat(document.getElementById('formCurrentPrice').value);
+                if (currentP > 0) priceRef.child(ticker).set(currentP);
             }
-        });
-
-        if (formTxType === 'watch') {
-            const currentP = parseFloat(document.getElementById('formCurrentPrice').value);
-            if (currentP > 0) priceRef.child(ticker).set(currentP);
+        } else {
+            // 本機模式下的儲存
+            if (editingTxId) { const index = allTransactions.findIndex(t => t.id === editingTxId); if(index !== -1) allTransactions[index] = txData; } 
+            else { allTransactions.push(txData); if (!marketPrices[ticker]) marketPrices[ticker] = { price: price, history: [{ date: txData.date, price: price }] }; }
+            
+            if (formTxType === 'watch') {
+                const currentP = parseFloat(document.getElementById('formCurrentPrice').value);
+                if (currentP > 0) {
+                    if (!marketPrices[ticker]) marketPrices[ticker] = { price: currentP, history: [] };
+                    marketPrices[ticker].price = currentP;
+                    marketPrices[ticker].history.push({ date: txData.date, price: currentP });
+                }
+            }
+            
+            Swal.fire({icon: "success", title: "儲存成功 (本機)", timer: 1000, showConfirmButton: false});
+            closeForm(); calculatePortfolio(); if (document.getElementById('detailModal').style.display === 'flex') showDetail(ticker); 
         }
     }
 
@@ -648,8 +704,12 @@
         window.deleteTx = async function(id) {
             const res = await Swal.fire({ title: '刪除紀錄？', icon: 'warning', showCancelButton: true, confirmButtonColor: '#e26b6b' });
             if(res.isConfirmed) { 
-                txRef.child(id).remove();
-                setTimeout(() => showDetail(ticker), 300); 
+                if (isFirebaseConnected) {
+                    txRef.child(id).remove();
+                    setTimeout(() => showDetail(ticker), 300); 
+                } else {
+                    allTransactions = allTransactions.filter(t => t.id !== id); calculatePortfolio(); showDetail(ticker);
+                }
             }
         };
 
@@ -748,12 +808,24 @@
         if (res) {
             Swal.fire({ title: '報價更新中...', didOpen: () => Swal.showLoading() });
             
-            let updates = {};
-            res.forEach(item => { updates[item.ticker] = item.price; });
-            
-            priceRef.update(updates).then(() => {
-                Swal.fire({icon: "success", title: "完成", text:"價格已為您更新", timer: 1500, showConfirmButton: false});
-            });
+            if (isFirebaseConnected) {
+                let updates = {};
+                res.forEach(item => { updates[item.ticker] = item.price; });
+                priceRef.update(updates).then(() => {
+                    Swal.fire({icon: "success", title: "完成", text:"價格已為您同步至雲端", timer: 1500, showConfirmButton: false});
+                });
+            } else {
+                res.forEach(item => {
+                    if(marketPrices[item.ticker]) {
+                        marketPrices[item.ticker].price = item.price;
+                        let h = marketPrices[item.ticker].history;
+                        let last = h.length > 0 ? h[h.length - 1] : null;
+                        if (last && last.date === todayStr) last.price = item.price; else h.push({ date: todayStr, price: item.price });
+                    }
+                });
+                calculatePortfolio();
+                Swal.fire({icon: "success", title: "完成", text:"價格已於本機更新", timer: 1500, showConfirmButton: false});
+            }
         }
     }
 </script>
