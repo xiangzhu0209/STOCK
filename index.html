@@ -167,11 +167,11 @@
         <div class="search-bar">🔍 <input type="text" id="searchInput" placeholder="搜尋代號或名稱..." oninput="renderGrid()"></div>
         </div>
     
-    <input type="file" id="htmlUploader" accept=".html" style="display:none;" onchange="handleHtmlUpload(event)">
+    <input type="file" id="htmlUploader" accept=".html,.csv" style="display:none;" onchange="handleFileUpload(event)">
     
     <div class="tab-group" style="padding-bottom: 5px;">
         <button class="tab-btn-action" style="background:var(--main-blue); color:white;" onclick="openQuickPrice()">✏️ 更新目前分類時價</button>
-        <button class="tab-btn-action" style="background:#b496c6; color:white;" onclick="document.getElementById('htmlUploader').click()">📤 匯入 Goodinfo</button>
+        <button class="tab-btn-action" style="background:#b496c6; color:white;" onclick="document.getElementById('htmlUploader').click()">📤 匯入 Goodinfo / CSV</button>
         <button class="tab-btn-action" onclick="openAnalysis()">📊 資產分析</button>
         <button class="tab-btn-action" onclick="exportCSV()">📥 匯出報表</button>
     </div>
@@ -346,86 +346,110 @@
     document.getElementById('startDate').value = getFirstDayOfMonthStr(new Date());
     document.getElementById('endDate').value = todayStr;
 
-    function handleHtmlUpload(event) {
+    async function handleFileUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
 
-        Swal.fire({ title: '🔍 讀取解析中...', text: '正在將檔案轉換為您的專屬線圖', didOpen: () => Swal.showLoading() });
+        const fileName = file.name.toLowerCase();
+        const isCsv = fileName.endsWith('.csv');
+        
+        Swal.fire({ title: '🔍 讀取解析中...', text: '正在辨識檔案格式並轉換數據', didOpen: () => Swal.showLoading() });
 
         const reader = new FileReader();
         reader.onload = function(e) {
             try {
                 const text = e.target.result;
-                const parser = new DOMParser();
-                const doc = parser.parseFromString(text, 'text/html');
-
-                let ticker = '';
-                const caption = doc.querySelector('caption');
-                if (caption && caption.innerText) {
-                    const match = caption.innerText.match(/(\d{4,5})/);
-                    if (match) ticker = match[1];
-                }
-                if (!ticker) {
-                    const title = doc.querySelector('title');
-                    if (title && title.innerText) {
-                        const match = title.innerText.match(/(\d{4,5})/);
-                        if (match) ticker = match[1];
-                    }
-                }
-
-                if (!ticker) {
-                    Swal.fire({icon: 'error', title: '錯誤', text: '無法從檔案標題中辨識出股票代號', confirmButtonColor: '#dcb38b'});
-                    event.target.value = ''; return;
-                }
-
-                const rows = doc.querySelectorAll('tr');
                 let newHistory = [];
+                let ticker = "";
 
-                rows.forEach(row => {
-                    const cells = row.querySelectorAll('td');
-                    if (cells.length >= 5) {
-                        let dateText = cells[0].innerText.trim();
-                        if (/^'\d{2}\/\d{2}\/\d{2}$/.test(dateText)) {
-                            let parts = dateText.replace("'", "").split('/');
-                            let formattedDate = `20${parts[0]}-${parts[1]}-${parts[2]}`;
-                            let price = parseFloat(cells[4].innerText.trim());
+                if (isCsv) {
+                    // --- CSV 解析邏輯 ---
+                    const lines = text.split(/\r?\n/);
+                    // 嘗試從檔名抓取代號 (假設檔名為 2330.csv)
+                    const tickerMatch = fileName.match(/(\d{4,5})/);
+                    ticker = tickerMatch ? tickerMatch[1] : "";
+
+                    lines.forEach((line, index) => {
+                        const cols = line.split(',');
+                        if (cols.length >= 2) {
+                            let dateText = cols[0].trim().replace(/\//g, '-'); // 支援 2026/04/30 轉 2026-04-30
+                            let price = parseFloat(cols[1].trim());
                             
-                            if (!isNaN(price)) {
-                                newHistory.push({ date: formattedDate, price: price });
+                            // 簡單檢查日期格式 (YYYY-MM-DD) 與價格是否為數字
+                            if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateText) && !isNaN(price)) {
+                                newHistory.push({ date: dateText, price: price });
                             }
                         }
-                    }
-                });
-
-                if (newHistory.length === 0) {
-                     Swal.fire({icon: 'error', title: '錯誤', text: '在此檔案中找不到符合格式的歷史報價', confirmButtonColor: '#dcb38b'});
-                     event.target.value = ''; return;
-                }
-
-                newHistory.sort((a,b) => new Date(a.date) - new Date(b.date));
-
-                if (!marketPrices[ticker]) {
-                    marketPrices[ticker] = { price: newHistory[newHistory.length-1].price, history: newHistory };
+                    });
                 } else {
-                    marketPrices[ticker].history = newHistory;
-                    marketPrices[ticker].price = newHistory[newHistory.length-1].price;
+                    // --- 原本的 HTML (Goodinfo) 解析邏輯 ---
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(text, 'text/html');
+                    const title = doc.querySelector('title')?.innerText || doc.querySelector('caption')?.innerText || "";
+                    const match = title.match(/(\d{4,5})/);
+                    ticker = match ? match[1] : "";
+
+                    const rows = doc.querySelectorAll('tr');
+                    rows.forEach(row => {
+                        const cells = row.querySelectorAll('td');
+                        if (cells.length >= 5) {
+                            let dateText = cells[0].innerText.trim();
+                            if (/^'\d{2}\/\d{2}\/\d{2}$/.test(dateText)) {
+                                let parts = dateText.replace("'", "").split('/');
+                                let formattedDate = `20${parts[0]}-${parts[1]}-${parts[2]}`;
+                                let price = parseFloat(cells[4].innerText.trim());
+                                if (!isNaN(price)) newHistory.push({ date: formattedDate, price: price });
+                            }
+                        }
+                    });
                 }
 
-                calculatePortfolio(); 
-
-                if (currentChartTicker === ticker && document.getElementById('detailModal').style.display === 'flex') {
-                    updateChart('year'); 
+                // 檢查是否成功取得代號
+                if (!ticker) {
+                    Swal.fire({
+                        title: '辨識失敗',
+                        text: '無法從檔案中辨識股票代號，請手動輸入',
+                        input: 'text',
+                        inputPlaceholder: '例如: 2330',
+                        showCancelButton: true,
+                        confirmButtonColor: '#dcb38b'
+                    }).then((result) => {
+                        if (result.value) processData(result.value, newHistory);
+                    });
+                } else {
+                    processData(ticker, newHistory);
                 }
-
-                Swal.fire({icon: 'success', title: '匯入成功！', text: `已成功載入 ${ticker} 共 ${newHistory.length} 筆真實報價資料，圖表已更新。`, confirmButtonColor: '#b496c6'});
-                event.target.value = ''; 
 
             } catch(err) {
                 console.error(err);
-                Swal.fire({icon: 'error', title: '解析失敗', text: '請確認您上傳的是 Goodinfo 台灣股市資訊網下載的 HTML 檔', confirmButtonColor: '#dcb38b'});
+                Swal.fire({icon: 'error', title: '解析失敗', text: '檔案格式不正確或內容損毀', confirmButtonColor: '#dcb38b'});
             }
+            event.target.value = ''; // 清除 input 讓同檔案可重複觸發
         };
         reader.readAsText(file);
+    }
+
+    // 統一處理數據存入的邏輯
+    function processData(ticker, newHistory) {
+        if (newHistory.length === 0) {
+            return Swal.fire({icon: 'error', title: '錯誤', text: '找不到有效的日期與價格數據', confirmButtonColor: '#dcb38b'});
+        }
+
+        newHistory.sort((a,b) => new Date(a.date) - new Date(b.date));
+
+        if (!marketPrices[ticker]) {
+            marketPrices[ticker] = { price: newHistory[newHistory.length-1].price, history: newHistory };
+        } else {
+            marketPrices[ticker].history = newHistory;
+            marketPrices[ticker].price = newHistory[newHistory.length-1].price;
+        }
+
+        calculatePortfolio(); 
+        if (currentChartTicker === ticker && document.getElementById('detailModal').style.display === 'flex') {
+            updateChart('year'); 
+        }
+
+        Swal.fire({icon: 'success', title: '匯入成功！', text: `代號 ${ticker} 已載入 ${newHistory.length} 筆歷史報價`, confirmButtonColor: '#b496c6'});
     }
 
     // ==========================================
