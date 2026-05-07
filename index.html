@@ -47,7 +47,6 @@
         .down-text { color: var(--down); font-weight: 900; }
         .pct-text { font-size: 13px; font-weight: 700; opacity: 0.9; margin-left: 2px; }
         
-        /* 區間日期選擇器專屬樣式 */
         .date-picker-small { background: rgba(255,255,255,0.15); border: 1px solid rgba(220,179,139,0.4); border-radius: 6px; padding: 4px 6px; font-weight: 700; color: white; outline: none; font-family: inherit; font-size: 11px; }
         .date-picker-small::-webkit-calendar-picker-indicator { filter: invert(1); opacity: 0.8; cursor: pointer; }
 
@@ -333,7 +332,6 @@
         }
     }
 
-    // 日期處理函數
     function getLocalDateStr(d) {
         const year = d.getFullYear(); const month = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${year}-${month}-${day}`;
     }
@@ -342,7 +340,6 @@
     }
     
     const todayStr = getLocalDateStr(new Date());
-    // 設定區間查詢的預設值 (本月1號 到 今天)
     document.getElementById('startDate').value = getFirstDayOfMonthStr(new Date());
     document.getElementById('endDate').value = todayStr;
 
@@ -363,30 +360,29 @@
                 let ticker = "";
 
                 if (isCsv) {
-                    // --- CSV 解析邏輯 ---
                     const lines = text.split(/\r?\n/);
-                    // 嘗試從檔名抓取代號 (假設檔名為 2330.csv)
                     const tickerMatch = fileName.match(/(\d{4,5})/);
                     ticker = tickerMatch ? tickerMatch[1] : "";
 
-                    lines.forEach((line, index) => {
+                    lines.forEach((line) => {
                         const cols = line.split(',');
                         if (cols.length >= 2) {
-                            let dateText = cols[0].trim().replace(/\//g, '-'); // 支援 2026/04/30 轉 2026-04-30
+                            let dateText = cols[0].trim().replace(/\//g, '-'); 
                             let price = parseFloat(cols[1].trim());
-                            
-                            // 簡單檢查日期格式 (YYYY-MM-DD) 與價格是否為數字
                             if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(dateText) && !isNaN(price)) {
                                 newHistory.push({ date: dateText, price: price });
                             }
                         }
                     });
                 } else {
-                    // --- 原本的 HTML (Goodinfo) 解析邏輯 ---
                     const parser = new DOMParser();
                     const doc = parser.parseFromString(text, 'text/html');
-                    const title = doc.querySelector('title')?.innerText || doc.querySelector('caption')?.innerText || "";
-                    const match = title.match(/(\d{4,5})/);
+                    
+                    // 強化代號辨識
+                    const titleElem = doc.querySelector('title');
+                    const captionElem = doc.querySelector('caption');
+                    const fullTitle = (titleElem ? titleElem.innerText : "") + (captionElem ? captionElem.innerText : "");
+                    const match = fullTitle.match(/(\d{4,5})/);
                     ticker = match ? match[1] : "";
 
                     const rows = doc.querySelectorAll('tr');
@@ -394,17 +390,18 @@
                         const cells = row.querySelectorAll('td');
                         if (cells.length >= 5) {
                             let dateText = cells[0].innerText.trim();
-                            if (/^'\d{2}\/\d{2}\/\d{2}$/.test(dateText)) {
-                                let parts = dateText.replace("'", "").split('/');
-                                let formattedDate = `20${parts[0]}-${parts[1]}-${parts[2]}`;
-                                let price = parseFloat(cells[4].innerText.trim());
+                            // 寬鬆日期辨識：支援 'YY/MM/DD 或 YYYY/MM/DD，有無單引號皆可
+                            let dateMatch = dateText.match(/'?(\d{2,4})\/(\d{1,2})\/(\d{1,2})/);
+                            if (dateMatch) {
+                                let year = dateMatch[1].length === 2 ? "20" + dateMatch[1] : dateMatch[1];
+                                let formattedDate = `${year}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
+                                let price = parseFloat(cells[4].innerText.trim().replace(/,/g, ''));
                                 if (!isNaN(price)) newHistory.push({ date: formattedDate, price: price });
                             }
                         }
                     });
                 }
 
-                // 檢查是否成功取得代號
                 if (!ticker) {
                     Swal.fire({
                         title: '辨識失敗',
@@ -424,12 +421,11 @@
                 console.error(err);
                 Swal.fire({icon: 'error', title: '解析失敗', text: '檔案格式不正確或內容損毀', confirmButtonColor: '#dcb38b'});
             }
-            event.target.value = ''; // 清除 input 讓同檔案可重複觸發
+            event.target.value = ''; 
         };
         reader.readAsText(file);
     }
 
-    // 統一處理數據存入的邏輯
     function processData(ticker, newHistory) {
         if (newHistory.length === 0) {
             return Swal.fire({icon: 'error', title: '錯誤', text: '找不到有效的日期與價格數據', confirmButtonColor: '#dcb38b'});
@@ -444,17 +440,20 @@
             marketPrices[ticker].price = newHistory[newHistory.length-1].price;
         }
 
+        // 同步最新時價到雲端
+        if (isFirebaseConnected) {
+            const latestPrice = newHistory[newHistory.length-1].price;
+            priceRef.child(ticker).set(latestPrice);
+        }
+
         calculatePortfolio(); 
         if (currentChartTicker === ticker && document.getElementById('detailModal').style.display === 'flex') {
             updateChart('year'); 
         }
 
-        Swal.fire({icon: 'success', title: '匯入成功！', text: `代號 ${ticker} 已載入 ${newHistory.length} 筆歷史報價`, confirmButtonColor: '#b496c6'});
+        Swal.fire({icon: 'success', title: '匯入成功！', text: `代號 ${ticker} 已載入 ${newHistory.length} 筆報價，且已同步至雲端`, confirmButtonColor: '#b496c6'});
     }
 
-    // ==========================================
-    // Firebase 連線 (已帶入專屬金鑰)
-    // ==========================================
     const firebaseConfig = {
         apiKey: "AIzaSyBQZ6pPmXqgGVj3rtNKTx41gogyQUmD41E",
         authDomain: "stock-f6872.firebaseapp.com",
@@ -487,35 +486,12 @@
         return history;
     }
 
-    let hist2367 = generateMockHistory(72, 0.015);
-    hist2367.push({date: "2026-04-14", price: 72});
-    hist2367.push({date: "2026-04-15", price: 72.1});
-    hist2367.push({date: "2026-04-16", price: 70.4});
-    hist2367.push({date: "2026-04-17", price: 68.5});
-    hist2367.push({date: "2026-04-20", price: 65.6});
-
-    let hist2337 = generateMockHistory(155.5, 0.015);
-    hist2337.push({date: "2026-04-14", price: 155.5});
-    hist2337.push({date: "2026-04-15", price: 142});
-    hist2337.push({date: "2026-04-16", price: 139});
-    hist2337.push({date: "2026-04-17", price: 131});
-    hist2337.push({date: "2026-04-20", price: 120.5});
-
     let marketPrices = {
         "6770": { price: 53.00, history: generateMockHistory(53.00, 0.015) },
-        "2367": { price: 65.6, history: hist2367 },
-        "2337": { price: 120.5, history: hist2337 },
+        "2367": { price: 65.6, history: generateMockHistory(65.6, 0.015) },
+        "2337": { price: 120.5, history: generateMockHistory(120.5, 0.015) },
         "5328": { price: 28.50, history: generateMockHistory(28.50, 0.02) }
     };
-    Object.keys(marketPrices).forEach(k => { marketPrices[k].history[marketPrices[k].history.length-1].price = marketPrices[k].price; });
-
-    const initialDemoData = [
-        { id: "tx_buy_6770", ticker: "6770", name: "力積電", quantity: 1000, price: 52.70, type: "buy", strategy: "long_term", date: "2026-04-16", memo: "玉山證券匯入" },
-        { id: "tx_buy_2367", ticker: "2367", name: "燿華", quantity: 1000, price: 70.50, type: "buy", strategy: "short_term", date: "2026-04-16", memo: "玉山證券匯入" },
-        { id: "tx_buy_2337", ticker: "2337", name: "旺宏", quantity: 1000, price: 140.00, type: "buy", strategy: "long_term", date: "2026-04-16", memo: "玉山證券匯入" },
-        { id: "tx_buy_5328", ticker: "5328", name: "華容", quantity: 1000, price: 25.00, type: "buy", strategy: "short_term", date: "2026-03-01", memo: "歷史建倉" },
-        { id: "tx_sell_5328", ticker: "5328", name: "華容", quantity: 1000, price: 28.30, fee: 124, type: "sell", date: "2026-04-16", memo: "獲利了結" }
-    ];
 
     try {
         firebase.initializeApp(firebaseConfig);
@@ -550,18 +526,10 @@
             calculatePortfolio();
         });
 
-        txRef.once('value', (snapshot) => {
-            if (!snapshot.exists()) {
-                initialDemoData.forEach(tx => txRef.child(tx.id).set(tx));
-            }
-        });
-
     } catch (e) {
         console.error("Firebase 連線發生異常:", e);
-        allTransactions = [...initialDemoData];
         calculatePortfolio();
     }
-
 
     function exportCSV() {
         let csvContent = "data:text/csv;charset=utf-8,\uFEFF系統ID,股票代號,股票名稱,交易類別,策略標籤,數量(股),單價/總額,交易成本(手續費/稅金),交易日期,自訂備註\r\n";
@@ -587,7 +555,6 @@
         document.getElementById('typeWatch').className = `type-btn watch ${type==='watch'?'active':''}`; document.getElementById('typeDiv').className = `type-btn div ${type==='div'?'active':''}`;
         document.getElementById('qtyGroup').style.display = (type === 'watch' || type === 'div') ? 'none' : 'grid';
         document.getElementById('strategyGroup').style.display = type === 'buy' ? 'block' : 'none'; 
-        
         document.getElementById('feeGroup').style.display = (type === 'buy' || type === 'sell') ? 'block' : 'none';
         document.getElementById('watchCurrentPriceGroup').style.display = type === 'watch' ? 'block' : 'none';
         
@@ -659,15 +626,6 @@
         } else {
             if (editingTxId) { const index = allTransactions.findIndex(t => t.id === editingTxId); if(index !== -1) allTransactions[index] = txData; } 
             else { allTransactions.push(txData); if (!marketPrices[ticker]) marketPrices[ticker] = { price: price, history: [{ date: txData.date, price: price }] }; }
-            
-            if (formTxType === 'watch') {
-                const currentP = parseFloat(document.getElementById('formCurrentPrice').value);
-                if (currentP > 0) {
-                    if (!marketPrices[ticker]) marketPrices[ticker] = { price: currentP, history: [] };
-                    marketPrices[ticker].price = currentP;
-                    marketPrices[ticker].history.push({ date: txData.date, price: currentP });
-                }
-            }
             Swal.fire({icon: "success", title: "儲存成功 (本機)", timer: 1000, showConfirmButton: false});
             closeForm(); clearFormFields(); calculatePortfolio(); 
             if (document.getElementById('detailModal').style.display === 'flex') showDetail(ticker); 
@@ -686,7 +644,6 @@
                 let avgCost = p.shares > 0 ? (p.totalCost / p.shares) : 0;
                 let sellValue = tx.price * tx.quantity; let costBasis = avgCost * tx.quantity;
                 let netGain = sellValue - costBasis - (tx.fee || 0);
-                
                 tx.costBasis = costBasis; tx.calculatedGain = netGain; p.realizedGain += netGain; p.realizedCostBasis += costBasis; 
                 p.shares -= tx.quantity; p.totalCost -= costBasis; p.hasTrade = true;
             } else if (tx.type === 'watch') { p.watchPrice = tx.price; 
@@ -708,11 +665,8 @@
 
     function renderGrid() {
         const search = document.getElementById('searchInput').value.toLowerCase();
-        
-        // 抓取新的區間設定
         const sDate = document.getElementById('startDate').value || '1970-01-01';
         const eDate = document.getElementById('endDate').value || '2099-12-31';
-        
         const grid = document.getElementById('portfolioGrid'); grid.innerHTML = "";
 
         let dCost = 0, dMarket = 0, dUnrealized = 0, dRealized = 0, dRealizedCost = 0, dPeriodPnl = 0, dPeriodCost = 0;
@@ -726,8 +680,6 @@
         displayItems.forEach(p => {
             if (p.shares > 0) { dCost += p.totalCost; dMarket += p.marketValue; dUnrealized += p.unrealizedGain; }
             dRealized += p.realizedGain; dRealizedCost += p.realizedCostBasis; 
-
-            // 計算區間內的已實現淨利
             p.history.forEach(tx => { 
                 if (tx.date >= sDate && tx.date <= eDate && (tx.type === 'sell' || tx.type === 'div')) { 
                     dPeriodPnl += (tx.calculatedGain || 0); 
@@ -743,85 +695,28 @@
             let contentHtml = '';
             if (p.status === 'watch') {
                 let watchDiff = p.currentPrice - p.watchPrice; let watchPct = p.watchPrice > 0 ? (Math.abs(watchDiff) / p.watchPrice) * 100 : 0;
-                let watchDiffStr = `<div class="${watchDiff>=0?'up-text':'down-text'}" style="font-size:11px; margin-top:2px; font-weight:900;">${watchDiff>=0?'▲':'▼'}${' '}${Math.abs(watchDiff).toFixed(2)} (${watchPct.toFixed(2)}%)</div>`;
-                contentHtml = `
-                    <div class="grid-row" style="margin-bottom:8px;"><span>目標價</span><span class="grid-val">$${p.watchPrice.toFixed(2)}</span></div>
-                    <div class="grid-row" style="align-items:flex-start;">
-                        <span style="margin-top:2px; padding-top:1px; flex-shrink:0;">目前時價</span>
-                        <div class="grid-val" style="display:flex; flex-direction:column; align-items:flex-end;">
-                            <span>$${p.currentPrice.toFixed(2)}</span>
-                            ${watchDiffStr}
-                        </div>
-                    </div>
-                `;
+                contentHtml = `<div class="grid-row"><span>目標價</span><span class="grid-val">$${p.watchPrice.toFixed(2)}</span></div>
+                               <div class="grid-row"><span>目前時價</span><div class="grid-val" style="display:flex; flex-direction:column; align-items:flex-end;"><span>$${p.currentPrice.toFixed(2)}</span><div class="${watchDiff>=0?'up-text':'down-text'}" style="font-size:11px;">${watchDiff>=0?'▲':'▼'} ${Math.abs(watchDiff).toFixed(2)} (${watchPct.toFixed(2)}%)</div></div></div>`;
             } else if (p.shares > 0) {
-                let gain = p.unrealizedGain; let percentStr = ` (${p.roiPercent.toFixed(2)}%)`; 
                 let priceDiff = p.currentPrice - p.avgPrice; let priceDiffPct = p.avgPrice > 0 ? (Math.abs(priceDiff) / p.avgPrice) * 100 : 0;
-                let priceDiffStr = `<div class="${priceDiff>=0?'up-text':'down-text'}" style="font-size:11px; margin-top:2px; font-weight:900;">${priceDiff>=0?'▲':'▼'}${' '}${Math.abs(priceDiff).toFixed(2)} (${priceDiffPct.toFixed(2)}%)</div>`;
-                contentHtml = `
-                    <div class="grid-row"><span>持有股數</span><span class="grid-val">${p.shares.toLocaleString()} 股</span></div>
-                    <div class="grid-row"><span>均價成本</span><span class="grid-val">$${p.avgPrice.toFixed(2)}</span></div>
-                    <div class="grid-row" style="align-items:flex-start;">
-                        <span style="margin-top:2px; padding-top:1px; flex-shrink:0;">目前時價</span>
-                        <div class="grid-val" style="display:flex; flex-direction:column; align-items:flex-end;">
-                            <span>$${p.currentPrice.toFixed(2)}</span>
-                            ${priceDiffStr}
-                        </div>
-                    </div>
-                    <div style="border-top:1px solid var(--bg-light); margin-top:8px; padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:11px; color:var(--text-sub); font-weight:700;">未實現損益</span>
-                        <span class="${gain>=0?'up-text':'down-text'}" style="font-size:14px; font-weight:900;">${gain>=0?'+':''}${Math.round(gain).toLocaleString()}<span class="pct-text">${percentStr}</span></span>
-                    </div>
-                `;
+                contentHtml = `<div class="grid-row"><span>持有股數</span><span class="grid-val">${p.shares.toLocaleString()} 股</span></div>
+                               <div class="grid-row"><span>均價成本</span><span class="grid-val">$${p.avgPrice.toFixed(2)}</span></div>
+                               <div class="grid-row"><span>目前時價</span><div class="grid-val" style="display:flex; flex-direction:column; align-items:flex-end;"><span>$${p.currentPrice.toFixed(2)}</span><div class="${priceDiff>=0?'up-text':'down-text'}" style="font-size:11px;">${priceDiff>=0?'▲':'▼'} ${Math.abs(priceDiff).toFixed(2)} (${priceDiffPct.toFixed(2)}%)</div></div></div>
+                               <div style="border-top:1px solid var(--bg-light); margin-top:8px; padding-top:8px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:11px; color:var(--text-sub);">未實現損益</span><span class="${p.unrealizedGain>=0?'up-text':'down-text'}" style="font-size:14px; font-weight:900;">${p.unrealizedGain>=0?'+':''}${Math.round(p.unrealizedGain).toLocaleString()}<span class="pct-text">(${p.roiPercent.toFixed(2)}%)</span></span></div>`;
             } else {
-                let gain = p.realizedGain; let percentStr = ` (${p.realizedRoiPercent.toFixed(2)}%)`; 
-                contentHtml = `
-                    <div class="grid-row"><span>狀態</span><span class="grid-val" style="color:var(--main-dark);">已結清 (持股 0)</span></div>
-                    <div class="grid-row"><span>結清總成本</span><span class="grid-val">$${Math.round(p.realizedCostBasis).toLocaleString()}</span></div>
-                    <div class="grid-row"><span>目前市場報價</span><span class="grid-val">$${p.currentPrice.toFixed(2)}</span></div>
-                    <div style="border-top:1px solid var(--bg-light); margin-top:8px; padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:11px; color:var(--text-sub); font-weight:700;">總實現(淨)損益</span>
-                        <span class="${gain>=0?'up-text':'down-text'}" style="font-size:14px; font-weight:900;">${gain>=0?'+':''}${Math.round(gain).toLocaleString()}<span class="pct-text">${percentStr}</span></span>
-                    </div>
-                `;
+                contentHtml = `<div class="grid-row"><span>狀態</span><span class="grid-val" style="color:var(--main-dark);">已結清</span></div>
+                               <div class="grid-row"><span>目前市場報價</span><span class="grid-val">$${p.currentPrice.toFixed(2)}</span></div>
+                               <div style="border-top:1px solid var(--bg-light); margin-top:8px; padding-top:8px; display:flex; justify-content:space-between; align-items:center;"><span style="font-size:11px; color:var(--text-sub);">總實現損益</span><span class="${p.realizedGain>=0?'up-text':'down-text'}" style="font-size:14px; font-weight:900;">${p.realizedGain>=0?'+':''}${Math.round(p.realizedGain).toLocaleString()}<span class="pct-text">(${p.realizedRoiPercent.toFixed(2)}%)</span></span></div>`;
             }
 
-            grid.innerHTML += `
-                <div class="grid-item" onclick="showDetail('${p.ticker}')">
-                    ${badge}
-                    <div class="grid-header"><div class="grid-ticker">${p.ticker}</div><div class="grid-name">${p.name}</div></div>
-                    ${contentHtml}
-                </div>
-            `;
+            grid.innerHTML += `<div class="grid-item" onclick="showDetail('${p.ticker}')">${badge}<div class="grid-header"><div class="grid-ticker">${p.ticker}</div><div class="grid-name">${p.name}</div></div>${contentHtml}</div>`;
         });
 
         const fmt = val => '$' + Math.round(val).toLocaleString();
-        let dashUnrealizedPct = dCost > 0 ? (dUnrealized / dCost) * 100 : 0; 
-        let dashRealizedPct = dRealizedCost > 0 ? (dRealized / dRealizedCost) * 100 : 0; 
-        let periodPct = dPeriodCost > 0 ? (dPeriodPnl / dPeriodCost) * 100 : 0;
-
         document.getElementById('dash-cost').innerText = fmt(dCost); document.getElementById('dash-market').innerText = fmt(dMarket);
-        
-        document.getElementById('dash-unrealized').innerHTML = `${dUnrealized>=0?'+':''}${fmt(dUnrealized)} <span class="pct-text">(${dashUnrealizedPct.toFixed(2)}%)</span>`; document.getElementById('dash-unrealized').className = 'stat-value ' + (dUnrealized>=0?'up-text':'down-text');
-        
-        document.getElementById('dash-realized').innerHTML = `${dRealized>=0?'+':''}${fmt(dRealized)} <span class="pct-text" style="font-size:12px;">(${dashRealizedPct.toFixed(2)}%)</span>`; document.getElementById('dash-realized').style.color = dRealized >= 0 ? 'var(--up)' : 'var(--down)';
-        
-        // 渲染全新的區間淨利
-        let periodPctStr = dPeriodCost > 0 ? ` <span class="pct-text" style="font-size:14px;">(${periodPct.toFixed(2)}%)</span>` : '';
-        document.getElementById('dash-period-pnl').innerHTML = `${dPeriodPnl>=0?'+':''}${fmt(dPeriodPnl)}${periodPctStr}`; 
-        document.getElementById('dash-period-pnl').style.color = dPeriodPnl >= 0 ? 'var(--up)' : 'var(--down)';
-    }
-
-    function openAnalysis() {
-        document.getElementById('analysisModal').style.display = 'flex'; let activeItems = Object.values(portfolio).filter(p => p.shares > 0);
-        if(activeItems.length === 0) { document.getElementById('pieEmptyMsg').style.display = 'block'; if(pieChartObj) pieChartObj.destroy(); return; }
-        document.getElementById('pieEmptyMsg').style.display = 'none'; const ctx = document.getElementById('assetPieChart').getContext('2d');
-        if (pieChartObj) pieChartObj.destroy(); Chart.defaults.font.family = "'Inter', sans-serif";
-        pieChartObj = new Chart(ctx, {
-            type: 'doughnut',
-            data: { labels: activeItems.map(p => `${p.ticker} ${p.name}`), datasets: [{ data: activeItems.map(p => p.marketValue), backgroundColor: ['#dcb38b', '#b496c6', '#84b2d1', '#8bc4a9', '#e6a87c', '#e26b6b', '#8c7a6b'], borderWidth: 2, borderColor: '#ffffff' }] },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: {font: {size: 11, weight:'bold'}, color: '#5c4e46'} } }, cutout: '65%' }
-        });
+        document.getElementById('dash-unrealized').innerHTML = `${dUnrealized>=0?'+':''}${fmt(dUnrealized)} <span class="pct-text">(${(dCost>0?(dUnrealized/dCost)*100:0).toFixed(2)}%)</span>`; document.getElementById('dash-unrealized').className = 'stat-value ' + (dUnrealized>=0?'up-text':'down-text');
+        document.getElementById('dash-realized').innerHTML = `${dRealized>=0?'+':''}${fmt(dRealized)} <span class="pct-text">(${(dRealizedCost>0?(dRealized/dRealizedCost)*100:0).toFixed(2)}%)</span>`; document.getElementById('dash-realized').style.color = dRealized >= 0 ? 'var(--up)' : 'var(--down)';
+        document.getElementById('dash-period-pnl').innerHTML = `${dPeriodPnl>=0?'+':''}${fmt(dPeriodPnl)}${dPeriodCost>0?` <span class="pct-text">(${(dPeriodPnl/dPeriodCost*100).toFixed(2)}%)</span>`:''}`; document.getElementById('dash-period-pnl').style.color = dPeriodPnl >= 0 ? 'var(--up)' : 'var(--down)';
     }
 
     function showDetail(ticker) {
@@ -830,153 +725,52 @@
         
         let statsHtml = '';
         if (p.status === 'watch') {
-            statsHtml = `<div><div class="stat-label">狀態</div><div class="stat-value" style="color:var(--watch);">👀 觀望</div></div>
-                         <div><div class="stat-label">目標價</div><div class="stat-value">$${p.watchPrice.toFixed(2)}</div></div>`;
+            statsHtml = `<div><div class="stat-label">狀態</div><div class="stat-value" style="color:var(--watch);">👀 觀望</div></div><div><div class="stat-label">目標價</div><div class="stat-value">$${p.watchPrice.toFixed(2)}</div></div>`;
         } else if (p.shares > 0) {
-            let unRealClass = 'stat-value ' + (p.unrealizedGain>=0?'up-text':'down-text');
-            let priceDiff = p.currentPrice - p.avgPrice; let priceDiffPct = p.avgPrice > 0 ? (Math.abs(priceDiff) / p.avgPrice) * 100 : 0;
-            let priceDiffStr = `<span class="${priceDiff>=0?'up-text':'down-text'}" style="font-size:12px; margin-left:6px; white-space:nowrap;">${priceDiff>=0?'▲':'▼'}${' '}${Math.abs(priceDiff).toFixed(2)} (${priceDiffPct.toFixed(2)}%)</span>`;
-
-            statsHtml = `<div><div class="stat-label">持有股數</div><div class="stat-value">${p.shares.toLocaleString()}</div></div>
-                         <div><div class="stat-label">均價成本</div><div class="stat-value">$${p.avgPrice.toFixed(2)}</div></div>
-                         <div style="grid-column: span 2;"><div class="stat-label">目前報價</div><div class="stat-value" style="display:flex; align-items:center;">$${p.currentPrice.toFixed(2)}${priceDiffStr}</div></div>
-                         <div style="grid-column: span 2;"><div class="stat-label">未實現損益</div><div class="${unRealClass}">${p.unrealizedGain>=0?'+':''}${Math.round(p.unrealizedGain).toLocaleString()} <span style="font-size:14px;">(${p.roiPercent.toFixed(2)}%)</span></div></div>`;
+            let priceDiff = p.currentPrice - p.avgPrice;
+            statsHtml = `<div><div class="stat-label">持有股數</div><div class="stat-value">${p.shares.toLocaleString()}</div></div><div><div class="stat-label">均價成本</div><div class="stat-value">$${p.avgPrice.toFixed(2)}</div></div><div style="grid-column: span 2;"><div class="stat-label">目前報價</div><div class="stat-value" style="display:flex; align-items:center;">$${p.currentPrice.toFixed(2)} <span class="${priceDiff>=0?'up-text':'down-text'}" style="font-size:12px; margin-left:6px;">${priceDiff>=0?'▲':'▼'} ${Math.abs(priceDiff).toFixed(2)}</span></div></div><div style="grid-column: span 2;"><div class="stat-label">未實現損益</div><div class="stat-value ${p.unrealizedGain>=0?'up-text':'down-text'}">${p.unrealizedGain>=0?'+':''}${Math.round(p.unrealizedGain).toLocaleString()} (${p.roiPercent.toFixed(2)}%)</div></div>`;
         } else {
-             let realClass = 'stat-value ' + (p.realizedGain>=0?'up-text':'down-text');
-             statsHtml = `<div><div class="stat-label">狀態</div><div class="stat-value" style="color:var(--main-dark);">已結清</div></div>
-                         <div><div class="stat-label">結清總成本</div><div class="stat-value">$${Math.round(p.realizedCostBasis).toLocaleString()}</div></div>
-                         <div style="grid-column: span 2;"><div class="stat-label">總實現淨利 (含配息)</div><div class="${realClass}">${p.realizedGain>=0?'+':''}${Math.round(p.realizedGain).toLocaleString()} <span style="font-size:14px;">(${p.realizedRoiPercent.toFixed(2)}%)</span></div></div>`;
+            statsHtml = `<div><div class="stat-label">狀態</div><div class="stat-value" style="color:var(--main-dark);">已結清</div></div><div><div class="stat-label">結清成本</div><div class="stat-value">$${Math.round(p.realizedCostBasis).toLocaleString()}</div></div><div style="grid-column: span 2;"><div class="stat-label">總實現淨利</div><div class="stat-value ${p.realizedGain>=0?'up-text':'down-text'}">${p.realizedGain>=0?'+':''}${Math.round(p.realizedGain).toLocaleString()} (${p.realizedRoiPercent.toFixed(2)}%)</div></div>`;
         }
         document.getElementById('detStats').innerHTML = statsHtml;
 
         window.deleteTx = async function(id) {
             const res = await Swal.fire({ title: '刪除紀錄？', icon: 'warning', showCancelButton: true, confirmButtonColor: '#e26b6b' });
             if(res.isConfirmed) { 
-                if (isFirebaseConnected) {
-                    txRef.child(id).remove();
-                    setTimeout(() => showDetail(ticker), 300); 
-                } else {
-                    allTransactions = allTransactions.filter(t => t.id !== id); calculatePortfolio(); showDetail(ticker);
-                }
+                if (isFirebaseConnected) { txRef.child(id).remove(); setTimeout(() => showDetail(ticker), 300); } 
+                else { allTransactions = allTransactions.filter(t => t.id !== id); calculatePortfolio(); showDetail(ticker); }
             }
         };
 
-        const listHtml = p.history.map(tx => {
-            let typeLabel = tx.type === 'buy' ? '買進' : (tx.type === 'sell' ? '賣出' : (tx.type === 'div' ? '領息' : '觀望'));
-            let rightHtml = '';
-            if(tx.type === 'watch') rightHtml = `<div style="font-size:14px; font-weight:700; color:var(--text-main);">目標價 $${tx.price}</div>`;
-            else if(tx.type === 'div') rightHtml = `<div style="font-size:15px; font-weight:900; color:var(--div);">+ $${tx.price}</div>`;
-            else {
-                rightHtml = `<div style="font-size:15px; font-weight:900; color:var(--text-main);">${tx.quantity.toLocaleString()} 股</div><div style="font-size:13px; color:var(--text-sub); font-weight:700;">單價 $${tx.price}</div>`;
-                if(tx.type === 'sell') {
-                    rightHtml += `<div style="font-size:11px; color:var(--up); font-weight:bold; margin-top:4px;">成本 $${tx.fee || 0}</div>
-                                  <div style="font-size:11px; color:${tx.calculatedGain>=0?'var(--down)':'var(--up)'}; font-weight:bold;">淨利 $${Math.round(tx.calculatedGain)}</div>`;
-                } else if (tx.type === 'buy') {
-                    if (tx.fee) rightHtml += `<div style="font-size:11px; color:var(--up); font-weight:bold; margin-top:4px;">手續費 $${tx.fee}</div>`;
-                }
-            }
-
-            return `
-            <div class="tx-item">
-                <div style="flex:1;"><span class="tx-type ${tx.type}">${typeLabel}</span><div style="font-size:12px; color:var(--text-sub); margin-top:4px; font-weight:bold;">${tx.date}</div></div>
-                <div style="flex:1; text-align:right; margin-right:10px;">${rightHtml}</div>
-                <div style="display:flex; flex-direction:column; gap:5px;">
-                    <button onclick='openForm(${JSON.stringify(tx).replace(/'/g, "&apos;")})' style="border:none; background:transparent; font-size:16px; cursor:pointer;">✏️</button>
-                    <button onclick="deleteTx('${tx.id}')" style="border:none; background:transparent; font-size:16px; cursor:pointer;">🗑️</button>
-                </div>
-            </div>`;
-        }).join('');
-        
-        document.getElementById('txList').innerHTML = listHtml || '<div style="text-align:center; color:var(--text-sub); font-size:13px; padding:20px;">尚無紀錄</div>';
+        document.getElementById('txList').innerHTML = p.history.map(tx => `<div class="tx-item"><div style="flex:1;"><span class="tx-type ${tx.type}">${tx.type==='buy'?'買進':tx.type==='sell'?'賣出':tx.type==='div'?'領息':'觀望'}</span><div style="font-size:12px; color:var(--text-sub); font-weight:bold;">${tx.date}</div></div><div style="flex:1; text-align:right; margin-right:10px;"><div style="font-size:15px; font-weight:900;">${tx.type==='div' || tx.type==='watch'?'':tx.quantity.toLocaleString()+' 股'}</div><div style="font-size:13px; color:var(--text-sub);">${tx.type==='div'?'+ $'+tx.price:'$'+tx.price}</div></div><div style="display:flex; flex-direction:column; gap:5px;"><button onclick='openForm(${JSON.stringify(tx).replace(/'/g, "&apos;")})' style="border:none; background:transparent; font-size:16px;">✏️</button><button onclick="deleteTx('${tx.id}')" style="border:none; background:transparent; font-size:16px;">🗑️</button></div></div>`).join('') || '<div style="text-align:center; color:var(--text-sub); padding:20px;">尚無紀錄</div>';
         currentChartTicker = ticker; updateChart('month'); document.getElementById('detailModal').style.display = 'flex';
     }
 
     function updateChart(timeframe) {
         document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
         document.getElementById(`tab-${timeframe}`).classList.add('active');
-        let mData = marketPrices[currentChartTicker] || {}; let history = mData.history || [];
+        let h = (marketPrices[currentChartTicker] || {}).history || [];
         const now = new Date(); let cutoff = new Date();
-        
-        if (timeframe === 'day') cutoff.setDate(now.getDate() - 1);
-        else if (timeframe === 'week') cutoff.setDate(now.getDate() - 7);
-        else if (timeframe === 'month') cutoff.setMonth(now.getMonth() - 1);
-        else if (timeframe === 'quarter') cutoff.setMonth(now.getMonth() - 3);
-        else if (timeframe === 'year') cutoff.setFullYear(now.getFullYear() - 1);
-
-        let filtered = history.filter(h => new Date(h.date) >= cutoff);
-        if (filtered.length === 0 && history.length > 0) filtered = [history[history.length-1]];
-
+        if (timeframe === 'day') cutoff.setDate(now.getDate() - 1); else if (timeframe === 'week') cutoff.setDate(now.getDate() - 7); else if (timeframe === 'month') cutoff.setMonth(now.getMonth() - 1); else if (timeframe === 'quarter') cutoff.setMonth(now.getMonth() - 3); else if (timeframe === 'year') cutoff.setFullYear(now.getFullYear() - 1);
+        let filtered = h.filter(x => new Date(x.date) >= cutoff);
         const ctx = document.getElementById('priceChart').getContext('2d');
         if (currentChartObj) currentChartObj.destroy();
-        Chart.defaults.font.family = "'Inter', sans-serif";
-        Chart.defaults.color = '#9e8e82';
-        
-        const dataLength = filtered.length;
-        const pointColors = filtered.map((_, i) => i === dataLength - 1 ? '#e26b6b' : '#dcb38b');
-        const pointRadii = filtered.map((_, i) => i === dataLength - 1 ? 5 : (timeframe==='year' ? 0 : 3));
+        currentChartObj = new Chart(ctx, { type: 'line', data: { labels: filtered.map(x => x.date), datasets: [{ data: filtered.map(x => x.price), borderColor: '#dcb38b', backgroundColor: 'rgba(220,179,139, 0.15)', fill: true, tension: 0, pointRadius: filtered.map((_, i) => i === filtered.length - 1 ? 5 : 0), pointBackgroundColor: '#e26b6b' }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } } });
+    }
 
-        currentChartObj = new Chart(ctx, {
-            type: 'line',
-            data: { 
-                labels: filtered.map(h => h.date), 
-                datasets: [{ 
-                    data: filtered.map(h => h.price), 
-                    borderColor: '#dcb38b', 
-                    backgroundColor: 'rgba(220,179,139, 0.15)', 
-                    fill: true, 
-                    tension: 0,
-                    pointRadius: pointRadii,
-                    pointBackgroundColor: pointColors,
-                    pointBorderColor: pointColors
-                }] 
-            },
-            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { ticks: { maxTicksLimit: 5, font: {size: 10} } }, y: { ticks: { font: {size: 10} } } } }
-        });
+    function openAnalysis() {
+        document.getElementById('analysisModal').style.display = 'flex'; let active = Object.values(portfolio).filter(p => p.shares > 0);
+        if(active.length === 0) { document.getElementById('pieEmptyMsg').style.display = 'block'; if(pieChartObj) pieChartObj.destroy(); return; }
+        document.getElementById('pieEmptyMsg').style.display = 'none'; const ctx = document.getElementById('assetPieChart').getContext('2d');
+        if (pieChartObj) pieChartObj.destroy();
+        pieChartObj = new Chart(ctx, { type: 'doughnut', data: { labels: active.map(p => `${p.ticker} ${p.name}`), datasets: [{ data: active.map(p => p.marketValue), backgroundColor: ['#dcb38b', '#b496c6', '#84b2d1', '#8bc4a9', '#e6a87c', '#e26b6b', '#8c7a6b'] }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } } });
     }
 
     async function openQuickPrice() {
-        let activeTickers = Object.values(portfolio).filter(p => {
-            if (currentFilter === 'all') return p.shares > 0 || p.status === 'watch';
-            else return p.status === currentFilter;
-        });
-
-        if (activeTickers.length === 0) return Swal.fire({title: "提示", text: "目前的分類中沒有可以更新的股票喔！", icon: "info", confirmButtonColor: '#dcb38b'});
-
-        let html = activeTickers.map(p => `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #f4efe9; padding-bottom:8px;">
-                <div style="font-weight:900; color:var(--text-main); font-size:14px; text-align:left;">${p.ticker} <span style="font-size:12px; color:var(--text-sub); font-weight:700;">${p.name}</span></div>
-                <input type="number" step="0.01" class="bulk-input" data-ticker="${p.ticker}" value="${p.currentPrice}" style="width:100px; padding:6px; border-radius:6px; border:1px solid #eaddcf; font-weight:900; text-align:right; color:var(--text-main);">
-            </div>
-        `).join('');
-
-        const { value: res } = await Swal.fire({
-            title: '批量修改時價', html: `<div style="max-height:60vh; overflow-y:auto; padding:5px;">${html}</div>`,
-            showCancelButton: true, confirmButtonText: '全部更新', confirmButtonColor: '#dcb38b', cancelButtonColor: '#cbbcc2',
-            preConfirm: () => Array.from(document.querySelectorAll('.bulk-input')).map(i => ({ ticker: i.dataset.ticker, price: parseFloat(i.value) }))
-        });
-
-        if (res) {
-            Swal.fire({ title: '報價更新中...', didOpen: () => Swal.showLoading() });
-            
-            if (isFirebaseConnected) {
-                let updates = {};
-                res.forEach(item => { updates[item.ticker] = item.price; });
-                priceRef.update(updates).then(() => {
-                    Swal.fire({icon: "success", title: "完成", text:"價格已為您同步至雲端", timer: 1500, showConfirmButton: false});
-                });
-            } else {
-                res.forEach(item => {
-                    if(marketPrices[item.ticker]) {
-                        marketPrices[item.ticker].price = item.price;
-                        let h = marketPrices[item.ticker].history;
-                        let last = h.length > 0 ? h[h.length - 1] : null;
-                        if (last && last.date === todayStr) last.price = item.price; else h.push({ date: todayStr, price: item.price });
-                    }
-                });
-                calculatePortfolio();
-                Swal.fire({icon: "success", title: "完成", text:"價格已於本機更新", timer: 1500, showConfirmButton: false});
-            }
-        }
+        let active = Object.values(portfolio).filter(p => currentFilter === 'all' ? (p.shares > 0 || p.status === 'watch') : p.status === currentFilter);
+        if (active.length === 0) return Swal.fire("提示", "目前分類中無股票", "info");
+        const { value: res } = await Swal.fire({ title: '批量修改時價', html: `<div style="max-height:60vh; overflow-y:auto;">${active.map(p => `<div style="display:flex; justify-content:space-between; margin-bottom:12px;"><div>${p.ticker} ${p.name}</div><input type="number" step="0.01" class="bulk-input" data-ticker="${p.ticker}" value="${p.currentPrice}" style="width:100px;"></div>`).join('')}</div>`, showCancelButton: true, preConfirm: () => Array.from(document.querySelectorAll('.bulk-input')).map(i => ({ ticker: i.dataset.ticker, price: parseFloat(i.value) })) });
+        if (res) { if (isFirebaseConnected) { let updates = {}; res.forEach(x => updates[x.ticker] = x.price); priceRef.update(updates).then(() => Swal.fire("完成", "已同步雲端", "success")); } else { res.forEach(x => { if(marketPrices[x.ticker]) { marketPrices[x.ticker].price = x.price; let h = marketPrices[x.ticker].history; if (h[h.length-1].date === todayStr) h[h.length-1].price = x.price; else h.push({ date: todayStr, price: x.price }); } }); calculatePortfolio(); Swal.fire("完成", "已於本機更新", "success"); } }
     }
 </script>
 </body>
