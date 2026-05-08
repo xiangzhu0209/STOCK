@@ -228,9 +228,12 @@
 <div id="detailModal" class="modal">
     <div class="modal-container">
         <div class="modal-header">
-            <div>
-                <span id="detTicker" style="font-size:24px; font-weight:900; color:var(--text-main);">-</span>
-                <span id="detName" style="font-size:14px; font-weight:700; color:var(--text-sub); margin-left:8px;">-</span>
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="display: flex; align-items: baseline;">
+                    <span id="detTicker" style="font-size:24px; font-weight:900; color:var(--text-main);">-</span>
+                    <span id="detName" style="font-size:14px; font-weight:700; color:var(--text-sub); margin-left:8px;">-</span>
+                </div>
+                <button onclick="editStockName()" style="border:none; background:#f4efe9; border-radius:6px; padding:4px 8px; font-size:12px; font-weight:bold; color:var(--text-main); cursor:pointer;">✏️ 修改名稱</button>
             </div>
             <button onclick="closeDetail()" style="border:none; background:none; font-size:24px; color:var(--text-sub); cursor:pointer;">×</button>
         </div>
@@ -378,6 +381,69 @@
         }
     }
 
+    // ====== 新增：手動修改股票代號與名稱的功能 ======
+    async function editStockName() {
+        const oldTicker = document.getElementById('detTicker').innerText;
+        const oldName = document.getElementById('detName').innerText;
+
+        const { value: formValues } = await Swal.fire({
+            title: '修改股票名稱/代號',
+            html:
+                `<div style="text-align:left; margin-bottom:5px; font-weight:bold; font-size:14px;">代號：</div><input id="swal-input-ticker" class="swal2-input" placeholder="代號" value="${oldTicker}" style="margin-top:0;">` +
+                `<div style="text-align:left; margin-bottom:5px; margin-top:15px; font-weight:bold; font-size:14px;">名稱：</div><input id="swal-input-name" class="swal2-input" placeholder="名稱" value="${oldName}" style="margin-top:0;">` +
+                `<div style="font-size:12px; color:gray; margin-top:15px; text-align:left;">💡 提示：修改後，此股票所有的歷史紀錄都會一起被改名。<br>如果您想標示結清不再變動時價，建議可以在代號後方手動加上 <b>(清)</b>。</div>`,
+            focusConfirm: false,
+            showCancelButton: true,
+            confirmButtonColor: '#dcb38b',
+            cancelButtonColor: '#cbbcc2',
+            preConfirm: () => {
+                return {
+                    newTicker: document.getElementById('swal-input-ticker').value.trim(),
+                    newName: document.getElementById('swal-input-name').value.trim()
+                }
+            }
+        });
+
+        if (formValues && formValues.newTicker) {
+            const { newTicker, newName } = formValues;
+            if (newTicker === oldTicker && newName === oldName) return; 
+
+            Swal.fire({ title: '更新中...', didOpen: () => Swal.showLoading() });
+
+            let updates = {};
+            
+            allTransactions.forEach(t => {
+                if (t.ticker === oldTicker) {
+                    t.ticker = newTicker;
+                    t.name = newName;
+                    if (isFirebaseConnected) {
+                        updates[`${t.id}/ticker`] = newTicker;
+                        updates[`${t.id}/name`] = newName;
+                    }
+                }
+            });
+
+            if (marketPrices[oldTicker]) {
+                marketPrices[newTicker] = JSON.parse(JSON.stringify(marketPrices[oldTicker]));
+                delete marketPrices[oldTicker];
+            }
+
+            if (isFirebaseConnected) {
+                if (Object.keys(updates).length > 0) {
+                    await txRef.update(updates);
+                }
+                if (customPrices[oldTicker] !== undefined) {
+                    await priceRef.child(newTicker).set(customPrices[oldTicker]);
+                    await priceRef.child(oldTicker).remove();
+                }
+            }
+
+            calculatePortfolio();
+            closeDetail(); 
+            Swal.fire({icon: "success", title: "修改成功！", timer: 1500, showConfirmButton: false});
+        }
+    }
+
     function getLocalDateStr(d) {
         const year = d.getFullYear(); const month = String(d.getMonth() + 1).padStart(2, '0'); const day = String(d.getDate()).padStart(2, '0'); return `${year}-${month}-${day}`;
     }
@@ -389,6 +455,7 @@
     document.getElementById('startDate').value = getFirstDayOfMonthStr(new Date());
     document.getElementById('endDate').value = todayStr;
 
+    // ====== 強化版 HTML/CSV 讀取解析器 ======
     async function handleFileUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -396,7 +463,7 @@
         const fileName = file.name.toLowerCase();
         const isCsv = fileName.endsWith('.csv');
         
-        Swal.fire({ title: '🔍 讀取解析中...', text: '正在辨識檔案格式並轉換數據', didOpen: () => Swal.showLoading() });
+        Swal.fire({ title: '🔍 地毯式解析中...', text: '正在嘗試從檔案中提取報價資料', didOpen: () => Swal.showLoading() });
 
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -430,18 +497,30 @@
                     const match = fullTitle.match(/(\d{4,5})/);
                     ticker = match ? match[1] : "";
 
+                    // 更強大的地毯式搜索
                     const rows = doc.querySelectorAll('tr');
                     rows.forEach(row => {
-                        const cells = row.querySelectorAll('td');
-                        if (cells.length >= 5) {
-                            let dateText = cells[0].innerText.trim();
-                            let dateMatch = dateText.match(/'?(\d{2,4})\/(\d{1,2})\/(\d{1,2})/);
-                            if (dateMatch) {
+                        const cells = Array.from(row.querySelectorAll('td, th'));
+                        for (let i = 0; i < cells.length; i++) {
+                            let cellText = cells[i].innerText.trim();
+                            // 尋找任何長得像日期的格子：支援 YY/MM/DD, YYYY-MM-DD 等
+                            let dateMatch = cellText.match(/^(?:')?(\d{2,4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+                            
+                            // 如果找到了日期，且後面還有足夠的欄位 (通常收盤價在日期的往後數第4或第5格)
+                            if (dateMatch && cells.length > i + 1) {
                                 let year = dateMatch[1].length === 2 ? "20" + dateMatch[1] : dateMatch[1];
                                 let formattedDate = `${year}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
-                                let priceText = cells[4].innerText.trim().replace(/,/g, '');
+                                
+                                // 嘗試抓取收盤價 (優先找往後第4格，如果沒有就找同行內的有效數字)
+                                let priceText = '';
+                                if (cells[i+4]) priceText = cells[i+4].innerText.trim().replace(/,/g, '');
+                                else priceText = cells[cells.length-1].innerText.trim().replace(/,/g, '');
+                                
                                 let price = parseFloat(priceText);
-                                if (!isNaN(price)) newHistory.push({ date: formattedDate, price: price });
+                                if (!isNaN(price) && price > 0) {
+                                    newHistory.push({ date: formattedDate, price: price });
+                                    break; // 這一行找到一筆資料就跳出內圈，換下一行
+                                }
                             }
                         }
                     });
@@ -473,7 +552,7 @@
 
     function processData(ticker, newHistory) {
         if (newHistory.length === 0) {
-            return Swal.fire({icon: 'error', title: '錯誤', text: '找不到有效的日期與價格數據', confirmButtonColor: '#dcb38b'});
+            return Swal.fire({icon: 'error', title: '錯誤', text: '找不到有效的日期與價格數據，請確定下載的檔案是否包含日期與收盤價欄位。', confirmButtonColor: '#dcb38b'});
         }
 
         newHistory.sort((a,b) => new Date(a.date) - new Date(b.date));
@@ -523,30 +602,6 @@
     let pieChartObj = null;
     let editingTxId = null;
 
-    function generateMockHistory(basePrice, volatility) {
-        let history = []; let cur = basePrice; let d = new Date();
-        for (let i = 365; i >= 0; i--) {
-            let temp = new Date(d); temp.setDate(temp.getDate() - i);
-            cur = cur * (1 + (Math.random() * volatility * 2 - volatility));
-            history.push({ date: getLocalDateStr(temp), price: parseFloat(cur.toFixed(2)) });
-        }
-        return history;
-    }
-
-    let marketPrices = {
-        "6770": { price: 53.00, history: generateMockHistory(53.00, 0.015) },
-        "2367": { price: 65.6, history: generateMockHistory(65.6, 0.015) },
-        "2337": { price: 120.5, history: generateMockHistory(120.5, 0.015) },
-        "5328": { price: 28.50, history: generateMockHistory(28.50, 0.02) }
-    };
-
-    const initialDemoData = [
-        { id: "tx_buy_6770", ticker: "6770", name: "力積電", quantity: 1000, price: 52.70, type: "buy", strategy: "long_term", date: "2026-04-16", memo: "玉山證券匯入" },
-        { id: "tx_buy_2367", ticker: "2367", name: "燿華", quantity: 1000, price: 70.50, type: "buy", strategy: "short_term", date: "2026-04-16", memo: "玉山證券匯入" },
-        { id: "tx_buy_2337", ticker: "2337", name: "旺宏", quantity: 1000, price: 140.00, type: "buy", strategy: "long_term", date: "2026-04-16", memo: "玉山證券匯入" },
-        { id: "tx_buy_5328", ticker: "5328", name: "華容", quantity: 1000, price: 25.00, type: "buy", strategy: "short_term", date: "2026-03-01", memo: "歷史建倉" }
-    ];
-
     try {
         firebase.initializeApp(firebaseConfig);
         db = firebase.database();
@@ -588,18 +643,13 @@
             }
         });
 
-        txRef.once('value', (snapshot) => {
-            if (!snapshot.exists()) {
-                initialDemoData.forEach(tx => txRef.child(tx.id).set(tx));
-            }
-        });
-
     } catch (e) {
         console.error("Firebase 連線發生異常:", e);
-        allTransactions = [...initialDemoData];
         calculatePortfolio();
     }
 
+
+    let marketPrices = {};
 
     function exportCSV() {
         let csvContent = "data:text/csv;charset=utf-8,\uFEFF系統ID,股票代號,股票名稱,交易類別,策略標籤,數量(股),單價/總額,交易成本(手續費/稅金),交易日期,自訂備註\r\n";
@@ -673,9 +723,6 @@
     function closeAnalysis() { document.getElementById('analysisModal').style.display = 'none'; }
     function closeProfitModal() { document.getElementById('profitModal').style.display = 'none'; }
 
-    // ===============================================
-    // ★★★ 核心新增：自動結清歸檔機制 ★★★
-    // ===============================================
     function saveTransaction() {
         let ticker = document.getElementById('formTicker').value.trim(); 
         const name = document.getElementById('formName').value.trim();
@@ -691,7 +738,6 @@
         let finalName = name;
         let updates = {}; 
 
-        // 偵測是否為「結清」動作 (只在新增賣出時檢查，編輯時不觸發)
         if (!editingTxId && formTxType === 'sell') {
             let currentShares = 0;
             allTransactions.forEach(t => {
@@ -701,12 +747,9 @@
                 }
             });
 
-            // 如果賣出數量剛好等於現有持股
             if (currentShares > 0 && (currentShares - qty) === 0) {
                 isClearing = true;
                 finalTicker = ticker + "(清)";
-                
-                // 防撞名機制：如果以前已經有結清過的 (清)，就變成 (清2), (清3)...
                 let counter = 1;
                 while (allTransactions.some(t => t.ticker === finalTicker)) {
                     counter++;
@@ -715,7 +758,6 @@
                 
                 finalName = name + " (結案)";
 
-                // 準備將這支股票所有歷史紀錄改名
                 allTransactions.forEach(t => {
                     if (t.ticker === ticker) {
                         t.ticker = finalTicker; 
@@ -727,7 +769,6 @@
                     }
                 });
 
-                // 凍結最後的市場報價 (拷貝過去給新代號)
                 if (marketPrices[ticker]) {
                     marketPrices[finalTicker] = JSON.parse(JSON.stringify(marketPrices[ticker]));
                     if (isFirebaseConnected) {
@@ -748,7 +789,7 @@
                 Swal.fire({icon: "success", title: isClearing ? "已結清並獨立歸檔！" : "儲存成功", timer: 1500, showConfirmButton: false});
                 closeForm(); clearFormFields();
                 if (document.getElementById('detailModal').style.display === 'flex') {
-                    if(isClearing) closeDetail(); // 結案後關閉視窗，因為代號變了
+                    if(isClearing) closeDetail(); 
                     else setTimeout(() => showDetail(finalTicker), 300);
                 }
             });
@@ -1088,7 +1129,6 @@
 
     async function openQuickPrice() {
         let activeTickers = Object.values(portfolio).filter(p => {
-            // 在快速更新時，預設排除已經結案的 (清) 股票，避免不小心改到
             if (currentFilter === 'all') return p.shares > 0 || p.status === 'watch';
             else return p.status === currentFilter;
         });
