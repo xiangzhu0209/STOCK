@@ -381,7 +381,6 @@
         }
     }
 
-    // ====== 新增：手動修改股票代號與名稱的功能 ======
     async function editStockName() {
         const oldTicker = document.getElementById('detTicker').innerText;
         const oldName = document.getElementById('detName').innerText;
@@ -436,6 +435,13 @@
                     await priceRef.child(newTicker).set(customPrices[oldTicker]);
                     await priceRef.child(oldTicker).remove();
                 }
+                
+                // ★ 連同歷史線圖資料庫也一起轉移！
+                const oldHistorySnap = await historyRef.child(oldTicker).once('value');
+                if (oldHistorySnap.exists()) {
+                    await historyRef.child(newTicker).set(oldHistorySnap.val());
+                    await historyRef.child(oldTicker).remove();
+                }
             }
 
             calculatePortfolio();
@@ -455,7 +461,6 @@
     document.getElementById('startDate').value = getFirstDayOfMonthStr(new Date());
     document.getElementById('endDate').value = todayStr;
 
-    // ====== 強化版 HTML/CSV 讀取解析器 ======
     async function handleFileUpload(event) {
         const file = event.target.files[0];
         if (!file) return;
@@ -497,21 +502,17 @@
                     const match = fullTitle.match(/(\d{4,5})/);
                     ticker = match ? match[1] : "";
 
-                    // 更強大的地毯式搜索
                     const rows = doc.querySelectorAll('tr');
                     rows.forEach(row => {
                         const cells = Array.from(row.querySelectorAll('td, th'));
                         for (let i = 0; i < cells.length; i++) {
                             let cellText = cells[i].innerText.trim();
-                            // 尋找任何長得像日期的格子：支援 YY/MM/DD, YYYY-MM-DD 等
                             let dateMatch = cellText.match(/^(?:')?(\d{2,4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
                             
-                            // 如果找到了日期，且後面還有足夠的欄位 (通常收盤價在日期的往後數第4或第5格)
                             if (dateMatch && cells.length > i + 1) {
                                 let year = dateMatch[1].length === 2 ? "20" + dateMatch[1] : dateMatch[1];
                                 let formattedDate = `${year}-${dateMatch[2].padStart(2, '0')}-${dateMatch[3].padStart(2, '0')}`;
                                 
-                                // 嘗試抓取收盤價 (優先找往後第4格，如果沒有就找同行內的有效數字)
                                 let priceText = '';
                                 if (cells[i+4]) priceText = cells[i+4].innerText.trim().replace(/,/g, '');
                                 else priceText = cells[cells.length-1].innerText.trim().replace(/,/g, '');
@@ -519,7 +520,7 @@
                                 let price = parseFloat(priceText);
                                 if (!isNaN(price) && price > 0) {
                                     newHistory.push({ date: formattedDate, price: price });
-                                    break; // 這一行找到一筆資料就跳出內圈，換下一行
+                                    break; 
                                 }
                             }
                         }
@@ -567,6 +568,8 @@
         if (isFirebaseConnected) {
             const latestPrice = newHistory[newHistory.length-1].price;
             priceRef.child(ticker).set(latestPrice);
+            // ★★★ 將匯入的歷史線圖永久寫入雲端 ★★★
+            historyRef.child(ticker).set(newHistory); 
         }
 
         calculatePortfolio(); 
@@ -591,7 +594,7 @@
         measurementId: "G-7D0Y468ZFB"
     };
 
-    let db, txRef, priceRef, settingsRef;
+    let db, txRef, priceRef, settingsRef, historyRef;
     let allTransactions = []; 
     let customPrices = {}; 
     let portfolio = {}; 
@@ -602,12 +605,15 @@
     let pieChartObj = null;
     let editingTxId = null;
 
+    let marketPrices = {};
+
     try {
         firebase.initializeApp(firebaseConfig);
         db = firebase.database();
         txRef = db.ref('stockpro/transactions');
         priceRef = db.ref('stockpro/customPrices');
         settingsRef = db.ref('stockpro/settings');
+        historyRef = db.ref('stockpro/priceHistory'); // 新增的歷史線圖資料庫
         isFirebaseConnected = true;
 
         txRef.on('value', (snapshot) => {
@@ -618,6 +624,22 @@
             calculatePortfolio();
         });
 
+        // ★ 監聽雲端的歷史線圖，確保換裝置或重新整理都不會不見
+        historyRef.on('value', (snapshot) => {
+            if (snapshot.exists()) {
+                const dbHistory = snapshot.val();
+                Object.keys(dbHistory).forEach(ticker => {
+                    if (!marketPrices[ticker]) marketPrices[ticker] = { price: 0, history: [] };
+                    marketPrices[ticker].history = dbHistory[ticker];
+                });
+                calculatePortfolio();
+                if (document.getElementById('detailModal').style.display === 'flex' && currentChartTicker) {
+                    let activeTab = document.querySelector('.chart-tab.active');
+                    if(activeTab) updateChart(activeTab.id.replace('tab-', ''));
+                }
+            }
+        });
+
         priceRef.on('value', (snapshot) => {
             if (snapshot.exists()) {
                 customPrices = snapshot.val();
@@ -626,10 +648,25 @@
                         marketPrices[ticker] = { price: customPrices[ticker], history: [{date: todayStr, price: customPrices[ticker]}] };
                     } else {
                         marketPrices[ticker].price = customPrices[ticker];
-                        let h = marketPrices[ticker].history;
+                        
+                        // ★ 自動將最新的報價接在歷史線圖最後面，並回傳給雲端
+                        let h = marketPrices[ticker].history || [];
                         let last = h.length > 0 ? h[h.length - 1] : null;
-                        if (last && last.date === todayStr) last.price = customPrices[ticker]; 
-                        else h.push({ date: todayStr, price: customPrices[ticker] });
+                        let needsHistoryUpdate = false;
+                        
+                        if (last && last.date === todayStr) {
+                            if (last.price !== customPrices[ticker]) {
+                                last.price = customPrices[ticker];
+                                needsHistoryUpdate = true;
+                            }
+                        } else {
+                            h.push({ date: todayStr, price: customPrices[ticker] });
+                            needsHistoryUpdate = true;
+                        }
+                        
+                        if (needsHistoryUpdate && isFirebaseConnected && h.length > 0) {
+                            historyRef.child(ticker).set(h);
+                        }
                     }
                 });
             }
@@ -647,9 +684,6 @@
         console.error("Firebase 連線發生異常:", e);
         calculatePortfolio();
     }
-
-
-    let marketPrices = {};
 
     function exportCSV() {
         let csvContent = "data:text/csv;charset=utf-8,\uFEFF系統ID,股票代號,股票名稱,交易類別,策略標籤,數量(股),單價/總額,交易成本(手續費/稅金),交易日期,自訂備註\r\n";
@@ -773,6 +807,7 @@
                     marketPrices[finalTicker] = JSON.parse(JSON.stringify(marketPrices[ticker]));
                     if (isFirebaseConnected) {
                         priceRef.child(finalTicker).set(marketPrices[ticker].price);
+                        historyRef.child(finalTicker).set(marketPrices[ticker].history); // ★連同歷史一起結清
                     }
                 }
             }
