@@ -254,7 +254,7 @@
 
             <div style="font-size:14px; font-weight:900; color:var(--text-main); margin:15px 0 10px; display:flex; justify-content:space-between; align-items:center;">
                 <span>📝 歷史紀錄</span>
-                <button onclick="openForm({ticker: document.getElementById('detTicker').innerText, name: document.getElementById('detName').innerText})" style="font-size:12px; padding:6px 10px; background:var(--main-blue); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">+ 新增</button>
+                <button id="detAddBtn" style="font-size:12px; padding:6px 10px; background:var(--main-blue); color:white; border:none; border-radius:6px; font-weight:bold; cursor:pointer;">+ 新增</button>
             </div>
             <div id="txList" class="tx-list"></div>
         </div>
@@ -383,14 +383,15 @@
 
     async function editStockName() {
         const oldTicker = document.getElementById('detTicker').innerText;
-        const oldName = document.getElementById('detName').innerText;
+        const activePortKey = document.getElementById('detAddBtn').getAttribute('data-portkey');
+        const oldName = activePortKey && portfolio[activePortKey] ? portfolio[activePortKey].name : document.getElementById('detName').innerText.replace(' (歷史結清總匯)', '');
 
         const { value: formValues } = await Swal.fire({
             title: '修改股票名稱/代號',
             html:
                 `<div style="text-align:left; margin-bottom:5px; font-weight:bold; font-size:14px;">代號：</div><input id="swal-input-ticker" class="swal2-input" placeholder="代號" value="${oldTicker}" style="margin-top:0;">` +
                 `<div style="text-align:left; margin-bottom:5px; margin-top:15px; font-weight:bold; font-size:14px;">名稱：</div><input id="swal-input-name" class="swal2-input" placeholder="名稱" value="${oldName}" style="margin-top:0;">` +
-                `<div style="font-size:12px; color:gray; margin-top:15px; text-align:left;">💡 提示：修改後，此股票所有的歷史紀錄都會一起被改名。<br>如果您想標示結清不再變動時價，建議可以在代號後方手動加上 <b>(清)</b>。</div>`,
+                `<div style="font-size:12px; color:gray; margin-top:15px; text-align:left;">💡 提示：修改後，此股票所有的歷史紀錄都會一起被改名。</div>`,
             focusConfirm: false,
             showCancelButton: true,
             confirmButtonColor: '#dcb38b',
@@ -436,7 +437,6 @@
                     await priceRef.child(oldTicker).remove();
                 }
                 
-                // ★ 連同歷史線圖資料庫也一起轉移！
                 const oldHistorySnap = await historyRef.child(oldTicker).once('value');
                 if (oldHistorySnap.exists()) {
                     await historyRef.child(newTicker).set(oldHistorySnap.val());
@@ -568,7 +568,6 @@
         if (isFirebaseConnected) {
             const latestPrice = newHistory[newHistory.length-1].price;
             priceRef.child(ticker).set(latestPrice);
-            // ★★★ 將匯入的歷史線圖永久寫入雲端 ★★★
             historyRef.child(ticker).set(newHistory); 
         }
 
@@ -613,7 +612,7 @@
         txRef = db.ref('stockpro/transactions');
         priceRef = db.ref('stockpro/customPrices');
         settingsRef = db.ref('stockpro/settings');
-        historyRef = db.ref('stockpro/priceHistory'); // 新增的歷史線圖資料庫
+        historyRef = db.ref('stockpro/priceHistory');
         isFirebaseConnected = true;
 
         txRef.on('value', (snapshot) => {
@@ -624,7 +623,6 @@
             calculatePortfolio();
         });
 
-        // ★ 監聽雲端的歷史線圖，確保換裝置或重新整理都不會不見
         historyRef.on('value', (snapshot) => {
             if (snapshot.exists()) {
                 const dbHistory = snapshot.val();
@@ -649,7 +647,6 @@
                     } else {
                         marketPrices[ticker].price = customPrices[ticker];
                         
-                        // ★ 自動將最新的報價接在歷史線圖最後面，並回傳給雲端
                         let h = marketPrices[ticker].history || [];
                         let last = h.length > 0 ? h[h.length - 1] : null;
                         let needsHistoryUpdate = false;
@@ -699,7 +696,7 @@
 
     function setFilter(type) {
         currentFilter = type; document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active')); document.getElementById(`filter-${type}`).classList.add('active');
-        const titles = { 'all': '全部', 'day_trade': '當沖(持倉)', 'short_term': '短期持有', 'long_term': '長期持有', 'watch': '觀望中', 'sold_std': '一般結清', 'sold_day': '當沖結清' };
+        const titles = { 'all': '全部', 'day_trade': '當沖(持)', 'short_term': '短期', 'long_term': '長期', 'watch': '觀望', 'sold_std': '一般結清', 'sold_day': '當沖結清' };
         document.getElementById('dash-title').innerText = `☕ 總覽 (${titles[type]})`; renderGrid();
     }
 
@@ -767,124 +764,138 @@
         if (!ticker || !name || price <= 0 || ((formTxType !== 'watch' && formTxType !== 'div') && qty <= 0)) return Swal.fire("錯誤", "資料填寫不完整", "error");
         if ((formTxType !== 'watch' && formTxType !== 'div') && document.getElementById('formUnit').value === 'lot') qty = qty * 1000;
 
-        let isClearing = false;
-        let finalTicker = ticker;
-        let finalName = name;
-        let updates = {}; 
-
-        if (!editingTxId && formTxType === 'sell') {
-            let currentShares = 0;
-            allTransactions.forEach(t => {
-                if (t.ticker === ticker) {
-                    if (t.type === 'buy') currentShares += t.quantity;
-                    else if (t.type === 'sell') currentShares -= t.quantity;
-                }
-            });
-
-            if (currentShares > 0 && (currentShares - qty) === 0) {
-                isClearing = true;
-                finalTicker = ticker + "(清)";
-                let counter = 1;
-                while (allTransactions.some(t => t.ticker === finalTicker)) {
-                    counter++;
-                    finalTicker = ticker + `(清${counter})`;
-                }
-                
-                finalName = name + " (結案)";
-
-                allTransactions.forEach(t => {
-                    if (t.ticker === ticker) {
-                        t.ticker = finalTicker; 
-                        t.name = finalName;
-                        if (isFirebaseConnected) {
-                            updates[`${t.id}/ticker`] = finalTicker;
-                            updates[`${t.id}/name`] = finalName;
-                        }
-                    }
-                });
-
-                if (marketPrices[ticker]) {
-                    marketPrices[finalTicker] = JSON.parse(JSON.stringify(marketPrices[ticker]));
-                    if (isFirebaseConnected) {
-                        priceRef.child(finalTicker).set(marketPrices[ticker].price);
-                        historyRef.child(finalTicker).set(marketPrices[ticker].history); // ★連同歷史一起結清
-                    }
-                }
-            }
-        }
-
-        const txData = { id: editingTxId || ('tx_' + Date.now()), ticker: finalTicker, name: finalName, price, quantity: qty, type: formTxType, date: document.getElementById('formDate').value, memo: document.getElementById('formMemo').value };
+        const txData = { id: editingTxId || ('tx_' + Date.now()), ticker: ticker, name: name, price, quantity: qty, type: formTxType, date: document.getElementById('formDate').value, memo: document.getElementById('formMemo').value };
         if(formTxType === 'buy') txData.strategy = document.getElementById('formStrategy').value; 
         if(formTxType === 'buy' || formTxType === 'sell') txData.fee = fee;
 
         if (isFirebaseConnected) {
-            if (isClearing && Object.keys(updates).length > 0) txRef.update(updates);
-            
             txRef.child(txData.id).set(txData).then(() => {
-                Swal.fire({icon: "success", title: isClearing ? "已結清並獨立歸檔！" : "儲存成功", timer: 1500, showConfirmButton: false});
+                Swal.fire({icon: "success", title: "儲存成功", timer: 1500, showConfirmButton: false});
                 closeForm(); clearFormFields();
-                if (document.getElementById('detailModal').style.display === 'flex') {
-                    if(isClearing) closeDetail(); 
-                    else setTimeout(() => showDetail(finalTicker), 300);
-                }
+                if (document.getElementById('detailModal').style.display === 'flex') closeDetail(); 
             });
             if (formTxType === 'watch') {
                 const currentP = parseFloat(document.getElementById('formCurrentPrice').value);
-                if (currentP > 0) priceRef.child(finalTicker).set(currentP);
+                if (currentP > 0) priceRef.child(ticker).set(currentP);
             }
         } else {
-            if (editingTxId) { const index = allTransactions.findIndex(t => t.id === editingTxId); if(index !== -1) allTransactions[index] = txData; } 
-            else { allTransactions.push(txData); if (!marketPrices[finalTicker]) marketPrices[finalTicker] = { price: price, history: [{ date: txData.date, price: price }] }; }
+            if (editingTxId) { 
+                const index = allTransactions.findIndex(t => t.id === editingTxId); 
+                if(index !== -1) allTransactions[index] = txData; 
+            } 
+            else { 
+                allTransactions.push(txData); 
+                if (!marketPrices[ticker]) marketPrices[ticker] = { price: price, history: [{ date: txData.date, price: price }] }; 
+            }
             
             if (formTxType === 'watch') {
                 const currentP = parseFloat(document.getElementById('formCurrentPrice').value);
                 if (currentP > 0) {
-                    if (!marketPrices[finalTicker]) marketPrices[finalTicker] = { price: currentP, history: [] };
-                    marketPrices[finalTicker].price = currentP;
-                    marketPrices[finalTicker].history.push({ date: txData.date, price: currentP });
+                    if (!marketPrices[ticker]) marketPrices[ticker] = { price: currentP, history: [] };
+                    marketPrices[ticker].price = currentP;
+                    marketPrices[ticker].history.push({ date: txData.date, price: currentP });
                 }
             }
-            Swal.fire({icon: "success", title: isClearing ? "已結清並獨立歸檔！" : "儲存成功", timer: 1500, showConfirmButton: false});
+            Swal.fire({icon: "success", title: "儲存成功", timer: 1500, showConfirmButton: false});
             closeForm(); clearFormFields(); calculatePortfolio(); 
-            if (document.getElementById('detailModal').style.display === 'flex') {
-                if(isClearing) closeDetail(); else showDetail(finalTicker);
-            }
+            if (document.getElementById('detailModal').style.display === 'flex') closeDetail();
         }
     }
 
+    // ==========================================
+    // 【全新完美邏輯】：雙卡合併法 (歷史結清區 vs 目前活水區)
+    // ==========================================
     function calculatePortfolio() {
         portfolio = {};
+        let tickerGroups = {}; 
         let sortedAll = [...allTransactions].sort((a,b) => new Date(a.date) - new Date(b.date));
 
+        // 第一階段：模擬每一次交易，將紀錄分為「已結清歷史」與「目前持倉」
         sortedAll.forEach(tx => {
-            if (!portfolio[tx.ticker]) portfolio[tx.ticker] = { ticker: tx.ticker, name: tx.name, shares: 0, totalCost: 0, realizedGain: 0, realizedCostBasis: 0, history: [], hasTrade: false, watchPrice: 0, strategy: 'long_term' };
-            let p = portfolio[tx.ticker]; p.history.push(tx);
-
+            if (!tickerGroups[tx.ticker]) {
+                tickerGroups[tx.ticker] = { clearedTxs: [], activeTxs: [], currentShares: 0 };
+            }
+            let tg = tickerGroups[tx.ticker];
+            
+            tg.activeTxs.push(tx); // 先把紀錄放進活水區
+            
             if (tx.type === 'buy') {
-                p.shares += tx.quantity; p.totalCost += (tx.price * tx.quantity) + (tx.fee || 0); p.hasTrade = true; if(tx.strategy) p.strategy = tx.strategy; 
+                tg.currentShares += tx.quantity;
             } else if (tx.type === 'sell') {
-                let avgCost = p.shares > 0 ? (p.totalCost / p.shares) : 0;
-                let sellValue = tx.price * tx.quantity; let costBasis = avgCost * tx.quantity;
-                let netGain = sellValue - costBasis - (tx.fee || 0);
-                
-                tx.costBasis = costBasis; tx.calculatedGain = netGain; p.realizedGain += netGain; p.realizedCostBasis += costBasis; 
-                p.shares -= tx.quantity; p.totalCost -= costBasis; p.hasTrade = true;
-                
-                if (p.shares <= 0) p.totalCost = 0;
-            } else if (tx.type === 'watch') { p.watchPrice = tx.price; 
-            } else if (tx.type === 'div') { p.realizedGain += tx.price; tx.calculatedGain = tx.price; p.hasTrade = true; }
+                tg.currentShares -= tx.quantity;
+                // 當這筆賣出讓庫存歸 0 時，代表這整個循環結束了
+                if (tg.currentShares <= 0) {
+                    tg.currentShares = 0;
+                    // 將活水區累積的歷史，全部整包倒入「結清總匯區」
+                    tg.clearedTxs.push(...tg.activeTxs);
+                    // 清空活水區，等待未來的重新買進
+                    tg.activeTxs = []; 
+                }
+            }
         });
 
-        Object.values(portfolio).forEach(p => p.history.sort((a,b) => new Date(b.date) - new Date(a.date)));
+        // 第二階段：將分好類的紀錄轉換成 UI 上的卡片資料
+        function buildPortItem(portKey, ticker, txs, isClearedCard) {
+            let p = {
+                portKey: portKey, ticker: ticker, name: txs[0].name,
+                shares: 0, totalCost: 0, realizedGain: 0, realizedCostBasis: 0, 
+                history: [], hasTrade: false, watchPrice: 0, strategy: 'long_term',
+                isClearedCard: isClearedCard // 紀錄這張卡片是不是「歷史結清總匯」
+            };
+            
+            txs.forEach(tx => {
+                p.history.push(tx);
+                if (tx.type === 'buy') {
+                    p.shares += tx.quantity; p.totalCost += (tx.price * tx.quantity) + (tx.fee || 0); p.hasTrade = true; if(tx.strategy) p.strategy = tx.strategy; 
+                } else if (tx.type === 'sell') {
+                    let avgCost = p.shares > 0 ? (p.totalCost / p.shares) : 0;
+                    let sellValue = tx.price * tx.quantity; let costBasis = avgCost * tx.quantity;
+                    let netGain = sellValue - costBasis - (tx.fee || 0);
+                    
+                    tx.costBasis = costBasis; tx.calculatedGain = netGain; p.realizedGain += netGain; p.realizedCostBasis += costBasis; 
+                    p.shares -= tx.quantity; p.totalCost -= costBasis; p.hasTrade = true;
+                    if(p.shares <= 0) { p.shares = 0; p.totalCost = 0; }
+                } else if (tx.type === 'watch') { p.watchPrice = tx.price; 
+                } else if (tx.type === 'div') { p.realizedGain += tx.price; tx.calculatedGain = tx.price; p.hasTrade = true; }
+            });
+            return p;
+        }
 
+        Object.keys(tickerGroups).forEach(ticker => {
+            let tg = tickerGroups[ticker];
+            
+            // 如果這支股票有任何「已經結清」的紀錄，統一做成一張結清卡
+            if (tg.clearedTxs.length > 0) {
+                let portKey = ticker + '_cleared';
+                portfolio[portKey] = buildPortItem(portKey, ticker, tg.clearedTxs, true);
+            }
+            
+            // 如果這支股票目前有「還在進行中」的紀錄，獨立做成一張活水卡
+            if (tg.activeTxs.length > 0) {
+                let portKey = ticker + '_active';
+                portfolio[portKey] = buildPortItem(portKey, ticker, tg.activeTxs, false);
+            }
+        });
+
+        // 第三階段：計算最終的未實現/已實現數據
         Object.values(portfolio).forEach(p => {
-            if (p.shares > 0) p.status = p.strategy; else if (p.hasTrade) p.status = (p.strategy === 'day_trade' ? 'sold_day' : 'sold_std'); else p.status = 'watch';
+            p.history.sort((a,b) => new Date(b.date) - new Date(a.date));
+            
+            if (p.isClearedCard) {
+                p.status = (p.strategy === 'day_trade' ? 'sold_day' : 'sold_std');
+            } else {
+                if (p.shares > 0) p.status = p.strategy; 
+                else if (p.hasTrade) p.status = (p.strategy === 'day_trade' ? 'sold_day' : 'sold_std'); 
+                else p.status = 'watch';
+            }
+
             let mData = marketPrices[p.ticker] || {};
             p.currentPrice = mData.price || (p.status === 'watch' ? p.watchPrice : (p.shares>0 ? (p.totalCost/p.shares) : 0));
             p.avgPrice = p.shares > 0 ? (p.totalCost / p.shares) : 0; p.marketValue = p.shares * p.currentPrice; p.unrealizedGain = p.marketValue - p.totalCost;
             p.roiPercent = (p.shares > 0 && p.totalCost > 0) ? (p.unrealizedGain / p.totalCost) * 100 : 0;
             p.realizedRoiPercent = (p.realizedCostBasis > 0) ? (p.realizedGain / p.realizedCostBasis) * 100 : 0;
         });
+        
         renderGrid(); 
     }
 
@@ -969,6 +980,12 @@
             else if (p.status === 'watch') badge = '<div class="badge-watch">👀 觀望</div>'; else if (p.status === 'day_trade') badge = '<div class="badge-day">⚡ 當沖</div>';
             else if (p.status === 'short_term') badge = '<div class="badge-short">📈 短期</div>'; else if (p.status === 'long_term') badge = '<div class="badge-long">☕ 長期</div>';
             
+            // 【UI 顯示】：結清區的總匯卡片幫它標上名字
+            let displayName = p.name;
+            if (p.isClearedCard) {
+                displayName += ` <span style="color:#b496c6;">(歷史結清總匯)</span>`;
+            }
+
             let contentHtml = '';
             if (p.status === 'watch') {
                 let watchDiff = p.currentPrice - p.watchPrice; let watchPct = p.watchPrice > 0 ? (Math.abs(watchDiff) / p.watchPrice) * 100 : 0;
@@ -1009,16 +1026,16 @@
                     <div class="grid-row"><span>結清總成本</span><span class="grid-val">$${Math.round(p.realizedCostBasis).toLocaleString()}</span></div>
                     <div class="grid-row"><span>凍結市場報價</span><span class="grid-val">$${p.currentPrice.toFixed(2)}</span></div>
                     <div style="border-top:1px solid var(--bg-light); margin-top:8px; padding-top:8px; display:flex; justify-content:space-between; align-items:center;">
-                        <span style="font-size:11px; color:var(--text-sub); font-weight:700;">總實現(淨)損益</span>
+                        <span style="font-size:11px; color:var(--text-sub); font-weight:700;">總匯實現淨利</span>
                         <span class="${gain>=0?'up-text':'down-text'}" style="font-size:14px; font-weight:900;">${gain>=0?'+':''}${Math.round(gain).toLocaleString()}<span class="pct-text">${percentStr}</span></span>
                     </div>
                 `;
             }
 
             grid.innerHTML += `
-                <div class="grid-item" onclick="showDetail('${p.ticker}')">
+                <div class="grid-item" onclick="showDetail('${p.portKey}')">
                     ${badge}
-                    <div class="grid-header"><div class="grid-ticker" style="font-size:${p.ticker.length>6?'20px':'26px'};">${p.ticker}</div><div class="grid-name">${p.name}</div></div>
+                    <div class="grid-header"><div class="grid-ticker" style="font-size:${p.ticker.length>6?'20px':'26px'};">${p.ticker}</div><div class="grid-name">${displayName}</div></div>
                     ${contentHtml}
                 </div>
             `;
@@ -1052,9 +1069,16 @@
         });
     }
 
-    function showDetail(ticker) {
-        const p = portfolio[ticker]; if (!p) return;
-        document.getElementById('detTicker').innerText = p.ticker; document.getElementById('detName').innerText = p.name;
+    function showDetail(portKey) {
+        const p = portfolio[portKey]; if (!p) return;
+        
+        let displayName = p.name;
+        if (p.isClearedCard) {
+            displayName += ` (歷史結清總匯)`;
+        }
+
+        document.getElementById('detTicker').innerText = p.ticker; 
+        document.getElementById('detName').innerText = displayName;
         
         let statsHtml = '';
         if (p.status === 'watch') {
@@ -1073,18 +1097,23 @@
              let realClass = 'stat-value ' + (p.realizedGain>=0?'up-text':'down-text');
              statsHtml = `<div><div class="stat-label">狀態</div><div class="stat-value" style="color:var(--main-dark);">已結清</div></div>
                          <div><div class="stat-label">結清總成本</div><div class="stat-value">$${Math.round(p.realizedCostBasis).toLocaleString()}</div></div>
-                         <div style="grid-column: span 2;"><div class="stat-label">總實現淨利 (含配息)</div><div class="${realClass}">${p.realizedGain>=0?'+':''}${Math.round(p.realizedGain).toLocaleString()} <span style="font-size:14px;">(${p.realizedRoiPercent.toFixed(2)}%)</span></div></div>`;
+                         <div style="grid-column: span 2;"><div class="stat-label">總匯實現淨利 (含配息)</div><div class="${realClass}">${p.realizedGain>=0?'+':''}${Math.round(p.realizedGain).toLocaleString()} <span style="font-size:14px;">(${p.realizedRoiPercent.toFixed(2)}%)</span></div></div>`;
         }
         document.getElementById('detStats').innerHTML = statsHtml;
+
+        document.getElementById('detAddBtn').onclick = () => openForm({ticker: p.ticker, name: p.name});
+        document.getElementById('detAddBtn').setAttribute('data-portkey', portKey);
 
         window.deleteTx = async function(id) {
             const res = await Swal.fire({ title: '刪除紀錄？', icon: 'warning', showCancelButton: true, confirmButtonColor: '#e26b6b' });
             if(res.isConfirmed) { 
                 if (isFirebaseConnected) {
                     txRef.child(id).remove();
-                    setTimeout(() => showDetail(ticker), 300); 
+                    // 刪除後稍微等一下重新計算，如果卡片不見了就關閉詳細面板
+                    setTimeout(() => { if(portfolio[portKey]) showDetail(portKey); else closeDetail(); }, 300); 
                 } else {
-                    allTransactions = allTransactions.filter(t => t.id !== id); calculatePortfolio(); showDetail(ticker);
+                    allTransactions = allTransactions.filter(t => t.id !== id); calculatePortfolio(); 
+                    if(portfolio[portKey]) showDetail(portKey); else closeDetail();
                 }
             }
         };
@@ -1116,7 +1145,10 @@
         }).join('');
         
         document.getElementById('txList').innerHTML = listHtml || '<div style="text-align:center; color:var(--text-sub); font-size:13px; padding:20px;">尚無紀錄</div>';
-        currentChartTicker = ticker; updateChart('month'); document.getElementById('detailModal').style.display = 'flex';
+        
+        currentChartTicker = p.ticker; 
+        updateChart('month'); 
+        document.getElementById('detailModal').style.display = 'flex';
     }
 
     function updateChart(timeframe) {
@@ -1163,10 +1195,13 @@
     }
 
     async function openQuickPrice() {
-        let activeTickers = Object.values(portfolio).filter(p => {
-            if (currentFilter === 'all') return p.shares > 0 || p.status === 'watch';
-            else return p.status === currentFilter;
+        let activeTickersMap = {};
+        Object.values(portfolio).forEach(p => {
+            if ((currentFilter === 'all' && (p.shares > 0 || p.status === 'watch')) || p.status === currentFilter) {
+                activeTickersMap[p.ticker] = p;
+            }
         });
+        let activeTickers = Object.values(activeTickersMap);
 
         if (activeTickers.length === 0) return Swal.fire({title: "提示", text: "目前的分類中沒有可以更新的股票喔！", icon: "info", confirmButtonColor: '#dcb38b'});
 
